@@ -24,6 +24,7 @@ interface Emits {
   (e: 'cutItem', item: FileItem): void;
   (e: 'deleteItem', item: FileItem): void;
   (e: 'renameItem', item: FileItem): void;
+  (e: 'openTerminal', item: FileItem): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -133,6 +134,16 @@ const isFocused = (itemId: string) => {
           @click.stop
         >
           <button
+            @click="emit('openTerminal', item)"
+            class="p-0.5 hover:bg-gray-200 rounded transition-colors"
+            title="Open in Terminal"
+          >
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <polyline points="4 17 10 11 4 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <line x1="12" y1="19" x2="20" y2="19" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <button
             @click="emit('copyItem', item)"
             class="p-0.5 hover:bg-gray-200 rounded transition-colors"
             title="Copy (Ctrl+C)"
@@ -241,6 +252,16 @@ const isFocused = (itemId: string) => {
           class="flex gap-1 flex-shrink-0"
           @click.stop
         >
+          <button
+            @click="emit('openTerminal', item)"
+            class="p-1 hover:bg-white/50 rounded transition-colors"
+            title="Open in Terminal"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <polyline points="4 17 10 11 4 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <line x1="12" y1="19" x2="20" y2="19" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+          </button>
           <button
             @click="emit('copyItem', item)"
             class="p-1 hover:bg-white/50 rounded transition-colors"

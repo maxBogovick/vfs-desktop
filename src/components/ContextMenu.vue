@@ -14,6 +14,7 @@ interface Emits {
   (e: 'paste'): void;
   (e: 'rename'): void;
   (e: 'delete'): void;
+  (e: 'openTerminal'): void;
   (e: 'properties'): void;
   (e: 'close'): void;
 }
@@ -97,6 +98,15 @@ const handleAction = (action: keyof Emits) => {
     </div>
 
     <div class="border-t border-[#D0D0BF] my-1"></div>
+
+    <!-- Open in Terminal -->
+    <div
+      @click="handleAction('openTerminal')"
+      class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+    >
+      <span class="w-4">💻</span>
+      <span class="flex-1">Open in Terminal</span>
+    </div>
 
     <!-- Properties -->
     <div

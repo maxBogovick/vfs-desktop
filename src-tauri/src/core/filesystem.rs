@@ -100,4 +100,8 @@ pub trait FileSystem: Send + Sync {
     /// Получение подсказок для автодополнения путей
     /// Возвращает список директорий, соответствующих частичному пути
     fn get_path_suggestions(&self, partial_path: &str) -> FileSystemResult<Vec<String>>;
+
+    /// Открытие терминала в указанной директории
+    /// Если path - файл, открывает терминал в родительской директории
+    fn open_terminal(&self, path: &str) -> FileSystemResult<()>;
 }

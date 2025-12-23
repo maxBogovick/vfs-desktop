@@ -161,8 +161,36 @@ const handleItemDrop = async (item: FileItem, event: DragEvent) => {
   await handleDrop(item, event, moveItems, copyItems);
 };
 
+const handleSidebarDrop = async (targetPath: string, event: DragEvent) => {
+  const { copyItems, moveItems } = useFileSystem();
+
+  // Create a temporary FileItem for the target path
+  const targetItem: FileItem = {
+    id: targetPath,
+    name: targetPath.split('/').pop() || '',
+    path: targetPath,
+    type: 'folder',
+    size: 0,
+    modified: '',
+  };
+
+  await handleDrop(targetItem, event, moveItems, copyItems);
+};
+
 const openCommandPalette = () => {
   isCommandPaletteOpen.value = true;
+};
+
+const handleOpenTerminal = async (item: FileItem) => {
+  const { openTerminal } = useFileSystem();
+  const { success, error } = useNotifications();
+
+  try {
+    await openTerminal(item.path);
+    success('Terminal opened', `Opened terminal in ${item.name}`);
+  } catch (err) {
+    error('Failed to open terminal', err instanceof Error ? err.message : 'Unknown error');
+  }
 };
 
 // Handle navigation to path from address bar
@@ -280,6 +308,11 @@ const contextMenuHandlers = {
   paste: () => fileOps.handlePaste(currentPath.value),
   rename: () => fileOps.handleRename(getSelected(), currentPath.value, showInput),
   delete: () => fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm),
+  openTerminal: () => {
+    if (contextMenu.value?.item) {
+      handleOpenTerminal(contextMenu.value.item);
+    }
+  },
   properties: () => {
     const selected = getSelected();
     if (selected.length === 1) {
@@ -345,7 +378,11 @@ onMounted(() => {
     <!-- Main Content -->
     <div class="flex-1 flex overflow-hidden">
       <!-- Sidebar -->
-      <Sidebar @navigate="(path) => navigateTo(path.split('/'))" />
+      <Sidebar
+        :current-path="'/' + currentPath.join('/')"
+        @navigate="(path) => navigateTo(path.split('/').filter(p => p))"
+        @drop="handleSidebarDrop"
+      />
 
       <!-- Main Area -->
       <div class="flex-1 flex overflow-hidden">
@@ -370,6 +407,7 @@ onMounted(() => {
           @cut-item="(item) => fileOps.handleCut([item])"
           @delete-item="(item) => fileOps.handleDelete([item], currentPath, clearSelection, showConfirm)"
           @rename-item="(item) => fileOps.handleRename([item], currentPath, showInput)"
+          @open-terminal="handleOpenTerminal"
         />
 
         <!-- Preview Panel -->
@@ -400,6 +438,7 @@ onMounted(() => {
       @paste="contextMenuHandlers.paste"
       @rename="contextMenuHandlers.rename"
       @delete="contextMenuHandlers.delete"
+      @open-terminal="contextMenuHandlers.openTerminal"
       @properties="contextMenuHandlers.properties"
       @close="closeContextMenu"
     />

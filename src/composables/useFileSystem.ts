@@ -48,6 +48,27 @@ export function useFileSystem() {
     return typeMap[ext] || 'file';
   };
 
+  // Helper function to convert entries to FileItems
+  const entriesToFileItems = (entries: FileSystemEntry[]): FileItem[] => {
+    return entries.map((entry) => ({
+      id: entry.path,
+      name: entry.name,
+      path: entry.path,
+      type: getFileType(entry.name, entry.isDir),
+      size: entry.size,
+      sizeFormatted: formatFileSize(entry.size),
+      modified: entry.modified ? new Date(entry.modified * 1000).toLocaleDateString() : undefined,
+      created: entry.created ? new Date(entry.created * 1000).toLocaleDateString() : undefined,
+      accessed: entry.accessed ? new Date(entry.accessed * 1000).toLocaleDateString() : undefined,
+      tags: [],
+      permissions: {
+        readable: true,
+        writable: true,
+        executable: entry.isDir,
+      },
+    }));
+  };
+
   // Load directory contents from Tauri backend
   const loadDirectory = async (path: string): Promise<void> => {
     isLoading.value = true;
@@ -55,30 +76,24 @@ export function useFileSystem() {
 
     try {
       const entries: FileSystemEntry[] = await invoke('read_directory', { path });
-
-      files.value = entries.map((entry) => ({
-        id: entry.path,
-        name: entry.name,
-        path: entry.path,
-        type: getFileType(entry.name, entry.isDir),
-        size: entry.size,
-        sizeFormatted: formatFileSize(entry.size),
-        modified: entry.modified ? new Date(entry.modified * 1000).toLocaleDateString() : undefined,
-        created: entry.created ? new Date(entry.created * 1000).toLocaleDateString() : undefined,
-        accessed: entry.accessed ? new Date(entry.accessed * 1000).toLocaleDateString() : undefined,
-        tags: [],
-        permissions: {
-          readable: true,
-          writable: true,
-          executable: entry.isDir,
-        },
-      }));
+      files.value = entriesToFileItems(entries);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load directory';
       files.value = [];
       console.error('Error loading directory:', e);
     } finally {
       isLoading.value = false;
+    }
+  };
+
+  // Get directory contents (for tree view) - returns array instead of updating state
+  const getDirectoryContents = async (path: string): Promise<FileItem[]> => {
+    try {
+      const entries: FileSystemEntry[] = await invoke('read_directory', { path });
+      return entriesToFileItems(entries);
+    } catch (e) {
+      console.error('Error getting directory contents:', e);
+      return [];
     }
   };
 
@@ -227,11 +242,21 @@ export function useFileSystem() {
     }
   };
 
+  // Open terminal in directory
+  const openTerminal = async (path: string): Promise<void> => {
+    try {
+      await invoke('open_terminal', { path });
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Failed to open terminal');
+    }
+  };
+
   return {
     files,
     isLoading,
     error,
     loadDirectory,
+    getDirectoryContents,
     getHomeDirectory,
     getFileInfo,
     deleteItem,
@@ -245,5 +270,6 @@ export function useFileSystem() {
     readFileContent,
     formatFileSize,
     normalizePath,
+    openTerminal,
   };
 }

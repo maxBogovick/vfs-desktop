@@ -90,3 +90,9 @@ pub fn get_path_suggestions(partial_path: String) -> Result<Vec<String>, String>
     let fs = get_filesystem();
     fs.get_path_suggestions(&partial_path).map_err(|e| e.message)
 }
+
+#[tauri::command]
+pub fn open_terminal(path: String) -> Result<(), String> {
+    let fs = get_filesystem();
+    fs.open_terminal(&path).map_err(|e| e.message)
+}

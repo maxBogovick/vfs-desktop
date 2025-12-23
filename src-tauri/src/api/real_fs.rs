@@ -636,4 +636,83 @@ impl FileSystem for RealFileSystem {
 
         Ok(suggestions)
     }
+
+    fn open_terminal(&self, path: &str) -> FileSystemResult<()> {
+        let path = Path::new(path);
+
+        // Определяем директорию для открытия
+        let dir = if path.is_file() {
+            path.parent().ok_or_else(||
+                FileSystemError::new("Could not determine parent directory")
+            )?
+        } else if path.is_dir() {
+            path
+        } else {
+            return Err(FileSystemError::new(
+                format!("Path does not exist: {}", path.display())
+            ));
+        };
+
+        // Открываем терминал в зависимости от ОС
+        #[cfg(target_os = "macos")]
+        {
+            Command::new("open")
+                .arg("-a")
+                .arg("Terminal")
+                .arg(dir)
+                .spawn()
+                .map_err(|e| FileSystemError::new(
+                    format!("Failed to open terminal: {}", e)
+                ))?;
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            // Пробуем разные терминалы в порядке приоритета
+            let terminals = vec![
+                ("gnome-terminal", vec!["--working-directory"]),
+                ("konsole", vec!["--workdir"]),
+                ("xfce4-terminal", vec!["--working-directory"]),
+                ("x-terminal-emulator", vec!["-e", "cd"]),
+            ];
+
+            let mut success = false;
+            for (terminal, args) in terminals {
+                let mut cmd = Command::new(terminal);
+                for arg in args {
+                    cmd.arg(arg);
+                }
+                cmd.arg(dir);
+
+                if cmd.spawn().is_ok() {
+                    success = true;
+                    break;
+                }
+            }
+
+            if !success {
+                return Err(FileSystemError::new(
+                    "No terminal emulator found"
+                ));
+            }
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            Command::new("cmd")
+                .arg("/c")
+                .arg("start")
+                .arg("cmd")
+                .arg("/K")
+                .arg("cd")
+                .arg("/D")
+                .arg(dir)
+                .spawn()
+                .map_err(|e| FileSystemError::new(
+                    format!("Failed to open terminal: {}", e)
+                ))?;
+        }
+
+        Ok(())
+    }
 }
