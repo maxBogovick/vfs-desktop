@@ -36,6 +36,12 @@ export function useNavigation() {
     const newHistory = tab.history.slice(0, tab.historyIndex + 1);
     newHistory.push(path);
 
+    // Ограничиваем размер истории (последние 50 записей)
+    const MAX_HISTORY_SIZE = 50;
+    if (newHistory.length > MAX_HISTORY_SIZE) {
+      newHistory.splice(0, newHistory.length - MAX_HISTORY_SIZE);
+    }
+
     // Update tab
     const tabIndex = tabs.value.findIndex(t => t.id === activeTabId.value);
     if (tabIndex !== -1) {
@@ -153,6 +159,15 @@ export function useNavigation() {
     if (tabs.value.length <= 1) return;
 
     const tabIndex = tabs.value.findIndex(t => t.id === tabId);
+
+    // Очищаем историю таба перед удалением для освобождения памяти
+    const tabToClose = tabs.value[tabIndex];
+    if (tabToClose) {
+      tabToClose.history = [];
+      tabToClose.path = [];
+    }
+
+    // Удаляем таб
     tabs.value = tabs.value.filter(t => t.id !== tabId);
 
     // Switch to another tab if the closed tab was active

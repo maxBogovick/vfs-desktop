@@ -54,6 +54,7 @@ export function useClipboard() {
         clear();
       }
     } catch (error) {
+      console.error(error);
       throw new Error(`Failed to paste: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };

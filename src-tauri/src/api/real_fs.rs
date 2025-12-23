@@ -1,4 +1,5 @@
 use crate::core::{FileSystem, FileSystemEntry, FileSystemError, FileSystemResult};
+use base64::{Engine as _, engine::general_purpose};
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -417,7 +418,7 @@ impl FileSystem for RealFileSystem {
             file.read_to_end(&mut buffer)
                 .map_err(|e| FileSystemError::new(format!("Failed to read file: {}", e)))?;
 
-            Ok(base64::encode(&buffer))
+            Ok(general_purpose::STANDARD.encode(&buffer))
         } else {
             // For text files, return content as string
             fs::read_to_string(&file_path)
@@ -500,5 +501,139 @@ impl FileSystem for RealFileSystem {
         }
 
         Ok(())
+    }
+
+    fn normalize_path(&self, path: &str) -> FileSystemResult<String> {
+        // Раскрываем тильду если есть
+        let expanded = if path.starts_with("~/") || path == "~" {
+            let home = dirs::home_dir()
+                .ok_or_else(|| FileSystemError::new("Could not find home directory"))?;
+
+            if path == "~" {
+                home
+            } else {
+                home.join(&path[2..])
+            }
+        } else {
+            PathBuf::from(path)
+        };
+
+        // Проверяем существование пути
+        if !expanded.exists() {
+            return Err(FileSystemError::new(format!(
+                "Path does not exist: {}",
+                path
+            )));
+        }
+
+        // Возвращаем абсолютный путь
+        expanded
+            .canonicalize()
+            .map_err(|e| FileSystemError::new(format!("Failed to normalize path: {}", e)))?
+            .to_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| FileSystemError::new("Invalid path encoding"))
+    }
+
+    fn get_path_suggestions(&self, partial_path: &str) -> FileSystemResult<Vec<String>> {
+        // Раскрываем тильду если есть
+        let expanded = if partial_path.starts_with("~/") || partial_path == "~" {
+            let home = dirs::home_dir()
+                .ok_or_else(|| FileSystemError::new("Could not find home directory"))?;
+
+            if partial_path == "~" {
+                home.to_str().unwrap_or("").to_string()
+            } else {
+                home.join(&partial_path[2..])
+                    .to_str()
+                    .unwrap_or("")
+                    .to_string()
+            }
+        } else {
+            partial_path.to_string()
+        };
+
+        let path = PathBuf::from(&expanded);
+
+        // Определяем родительскую директорию и префикс для поиска
+        let (parent_dir, prefix) = if expanded.ends_with('/') || expanded.ends_with('\\') {
+            // Если путь заканчивается на /, ищем все в этой директории
+            (path.clone(), String::new())
+        } else {
+            // Иначе берем родительскую директорию и имя файла как префикс
+            let parent = path.parent().unwrap_or_else(|| Path::new("/"));
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            (parent.to_path_buf(), file_name)
+        };
+
+        // Если родительская директория не существует, возвращаем пустой список
+        if !parent_dir.exists() || !parent_dir.is_dir() {
+            return Ok(Vec::new());
+        }
+
+        let mut suggestions = Vec::new();
+
+        // Читаем содержимое директории
+        let entries = fs::read_dir(&parent_dir)
+            .map_err(|e| FileSystemError::new(format!("Failed to read directory: {}", e)))?;
+
+        for entry in entries {
+            if let Ok(entry) = entry {
+                let entry_path = entry.path();
+                let file_name = entry_path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("");
+
+                // Пропускаем скрытые файлы
+                if file_name.starts_with('.') {
+                    continue;
+                }
+
+                // Фильтруем по префиксу (без учета регистра)
+                if !prefix.is_empty()
+                    && !file_name.to_lowercase().starts_with(&prefix.to_lowercase())
+                {
+                    continue;
+                }
+
+                // Добавляем только директории для автодополнения путей
+                if entry_path.is_dir() {
+                    if let Some(path_str) = entry_path.to_str() {
+                        // Преобразуем обратно в формат с ~ если начинается с home
+                        let suggestion = if partial_path.starts_with("~") {
+                            if let Some(home) = dirs::home_dir() {
+                                if let Some(home_str) = home.to_str() {
+                                    path_str
+                                        .strip_prefix(home_str)
+                                        .map(|suffix| format!("~{}", suffix))
+                                        .unwrap_or_else(|| path_str.to_string())
+                                } else {
+                                    path_str.to_string()
+                                }
+                            } else {
+                                path_str.to_string()
+                            }
+                        } else {
+                            path_str.to_string()
+                        };
+
+                        suggestions.push(suggestion);
+                    }
+                }
+            }
+        }
+
+        // Сортируем по имени
+        suggestions.sort();
+
+        // Ограничиваем количество подсказок
+        suggestions.truncate(10);
+
+        Ok(suggestions)
     }
 }

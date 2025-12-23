@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, onUnmounted } from 'vue';
 import type { FileItem } from '../types';
-import { useFileSystem } from '../composables/useFileSystem';
+import { useFileContentCache } from '../composables/useFileContentCache';
 
 interface Props {
   file: FileItem | null;
@@ -15,11 +15,23 @@ interface Emits {
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
-const { readFileContent } = useFileSystem();
+const { getFileContent } = useFileContentCache();
 
 const fileContent = ref<string | null>(null);
 const isLoadingContent = ref(false);
 const contentError = ref<string | null>(null);
+
+// Функция очистки контента для освобождения памяти
+const cleanupContent = () => {
+  fileContent.value = null;
+  contentError.value = null;
+  isLoadingContent.value = false;
+};
+
+// Очищаем при unmount
+onUnmounted(() => {
+  cleanupContent();
+});
 
 const getFileIcon = (item: FileItem) => {
   const icons: Record<string, string> = {
@@ -67,9 +79,9 @@ const getImageMimeType = (fileName: string): string => {
   return mimeTypes[ext] || 'image/jpeg';
 };
 
-watch(() => props.file, async (newFile) => {
-  fileContent.value = null;
-  contentError.value = null;
+watch(() => props.file, async (newFile, oldFile) => {
+  // Очищаем предыдущий контент для освобождения памяти
+  cleanupContent();
 
   if (!newFile || !canPreview(newFile)) {
     return;
@@ -78,7 +90,8 @@ watch(() => props.file, async (newFile) => {
   isLoadingContent.value = true;
 
   try {
-    const content = await readFileContent(newFile.path, 5_000_000); // 5MB limit
+    // Используем кеш для загрузки файла
+    const content = await getFileContent(newFile.path, 5_000_000); // 5MB limit
     fileContent.value = content;
   } catch (err) {
     contentError.value = err instanceof Error ? err.message : 'Failed to load file content';

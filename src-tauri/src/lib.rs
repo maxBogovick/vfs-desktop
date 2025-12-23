@@ -29,7 +29,9 @@ pub fn run() {
             open_file,
             reveal_in_finder,
             get_system_folders,
-            read_file_content
+            read_file_content,
+            normalize_path,
+            get_path_suggestions
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

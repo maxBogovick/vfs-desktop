@@ -6,33 +6,29 @@ import FileList from './components/FileList.vue';
 import Preview from './components/Preview.vue';
 import CommandPalette from './components/CommandPalette.vue';
 import ContextMenu from './components/ContextMenu.vue';
+import Notifications from './components/Notifications.vue';
+import ConfirmDialog from './components/ConfirmDialog.vue';
+import PropertiesDialog from './components/PropertiesDialog.vue';
+import InputDialog from './components/InputDialog.vue';
+
 import { useFileSystem } from './composables/useFileSystem';
 import { useNavigation } from './composables/useNavigation';
 import { useSelection } from './composables/useSelection';
 import { useSearch } from './composables/useSearch';
 import { useDragDrop } from './composables/useDragDrop';
 import { useKeyboard } from './composables/useKeyboard';
-import { useClipboard } from './composables/useClipboard';
+import { useDialogs } from './composables/useDialogs';
+import { useFileOperations } from './composables/useFileOperations';
+import { useCommands } from './composables/useCommands';
 import { useNotifications } from './composables/useNotifications';
-import Notifications from './components/Notifications.vue';
-import ConfirmDialog from './components/ConfirmDialog.vue';
-import PropertiesDialog from './components/PropertiesDialog.vue';
+import { createKeyboardShortcuts } from './utils/shortcuts';
+
 import type { FileItem, ViewMode } from './types';
 
-// Composables
-const {
-  files,
-  isLoading,
-  loadDirectory,
-  moveItems,
-  copyItems,
-  deleteItem,
-  renameItem,
-  createFolder,
-  getHomeDirectory,
-  openFile: openFileInApp,
-  revealInFinder,
-} = useFileSystem();
+// File System
+const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory } = useFileSystem();
+
+// Navigation
 const {
   tabs,
   activeTabId,
@@ -44,13 +40,14 @@ const {
   goForward,
   goUp,
   goHome,
-  navigateInto,
   navigateTo,
   navigateToBreadcrumb,
   addTab,
   closeTab,
   switchTab,
 } = useNavigation();
+
+// Selection
 const {
   selectedIds,
   selectedCount,
@@ -60,13 +57,25 @@ const {
   getSelectedItems,
   clearSelection,
   selectAll,
+  focusedId,
+  isFocused,
+  setFocused,
+  moveFocusUp,
+  moveFocusDown,
+  moveFocusToFirst,
+  moveFocusToLast,
+  selectFocused,
+  toggleFocusedSelection,
+  getFocusedItem,
 } = useSelection();
+
+// Search & Filters
 const {
-  searchQuery,
   processFiles,
-  setSearchQuery,
   hasActiveFilters,
 } = useSearch();
+
+// Drag & Drop
 const {
   isDragging,
   dragOverId,
@@ -75,46 +84,55 @@ const {
   handleDragLeave,
   handleDrop,
 } = useDragDrop();
+
+// Dialogs
 const {
-  hasClipboardItems,
-  copy: copyToClipboard,
-  cut: cutToClipboard,
-  paste: pasteFromClipboard,
-  clear: clearClipboard,
-} = useClipboard();
-const { success, error: showError, warning, info } = useNotifications();
+  confirmDialog,
+  showConfirm,
+  closeConfirm,
+  propertiesDialog,
+  closeProperties,
+  inputDialog,
+  showInput,
+  closeInput,
+} = useDialogs();
+
+// Helper для получения текущей директории
+const getCurrentDirectoryPath = async (): Promise<string> => {
+  let pathString = currentPath.value.join('/');
+  if (pathString && !pathString.startsWith('/')) {
+    pathString = '/' + pathString;
+  }
+  if (!pathString) {
+    return await getHomeDirectory();
+  }
+  return pathString;
+};
+
+// Функция для обновления текущей директории
+const refreshCurrentDirectory = async () => {
+  const pathString = await getCurrentDirectoryPath();
+  await loadDirectory(pathString);
+};
+
+// File Operations
+const fileOps = useFileOperations(refreshCurrentDirectory);
 
 // Local state
 const viewMode = ref<ViewMode>('list');
 const isCommandPaletteOpen = ref(false);
 const contextMenu = ref<{ x: number; y: number; item: FileItem } | null>(null);
 const previewFile = ref<FileItem | null>(null);
-const confirmDialog = ref<{
-  isOpen: boolean;
-  title: string;
-  message: string;
-  type: 'warning' | 'danger' | 'info';
-  onConfirm: () => void;
-}>({
-  isOpen: false,
-  title: '',
-  message: '',
-  type: 'warning',
-  onConfirm: () => {},
-});
-const propertiesDialog = ref<{ isOpen: boolean; file: FileItem | null }>({
-  isOpen: false,
-  file: null,
-});
 
 // Computed
 const processedFiles = computed(() => processFiles(files.value));
 
+// Helper to get selected items
+const getSelected = () => getSelectedItems(files.value);
+
 // Handlers
 const handleItemDoubleClick = (item: FileItem) => {
   if (item.type === 'folder' || item.type === 'drive' || item.type === 'system') {
-    // Navigate to the full path of the folder
-    // Split path and filter out empty strings, preserving path structure
     const pathParts = item.path.split('/').filter(p => p);
     navigateTo(pathParts);
   } else {
@@ -139,6 +157,7 @@ const handleDragStart = (item: FileItem, event: DragEvent) => {
 };
 
 const handleItemDrop = async (item: FileItem, event: DragEvent) => {
+  const { copyItems, moveItems } = useFileSystem();
   await handleDrop(item, event, moveItems, copyItems);
 };
 
@@ -146,298 +165,140 @@ const openCommandPalette = () => {
   isCommandPaletteOpen.value = true;
 };
 
+// Handle navigation to path from address bar
+const handleNavigateToPath = async (path: string) => {
+  try {
+    // Normalize the path (expand ~, resolve to absolute path)
+    const normalizedPath = await normalizePath(path);
+
+    // Convert absolute path to array format for navigation
+    // Remove leading slash and split by '/'
+    const pathArray = normalizedPath.replace(/^\//, '').split('/').filter(p => p);
+
+    navigateTo(pathArray);
+  } catch (err) {
+    const { error } = useNotifications();
+    error('Invalid path', err instanceof Error ? err.message : 'Path not found');
+  }
+};
+
+// Command palette commands
+const commands = useCommands({
+  onNewFolder: () => fileOps.handleNewFolder(currentPath.value, showInput),
+  onNewFile: () => {},
+  onSearch: () => {},
+  onGoto: () => {
+    showInput(
+      'Go To',
+      'Enter path:',
+      (path: string) => {
+        if (path) {
+          try {
+            navigateTo(path.split('/').filter(p => p));
+          } catch (err) {
+            const { error } = useFileOperations();
+          }
+        }
+        closeInput();
+      },
+      '',
+      '/Users/username/Documents'
+    );
+  },
+  onRefresh: () => fileOps.handleRefresh(currentPath.value),
+  onCopyPath: (selectedItems: FileItem[]) => commands.copyPathCommand(selectedItems),
+  onSelectAll: (allFiles: FileItem[]) => commands.selectAllCommand(allFiles, selectAll),
+  onNewTab: addTab,
+  onCloseTab: () => commands.closeTabCommand(tabs.value.length, closeTab, activeTabId.value),
+  onSettings: () => {},
+});
+
 const executeCommand = (cmd: { id: string }) => {
-  const commandHandlers: Record<string, () => void> = {
-    'new-folder': handleNewFolder,
-    'new-file': () => {
-      warning('Not implemented', 'File creation is not yet implemented');
-    },
-    'search': () => {
-      info('Search', 'Use the search bar in the toolbar');
-    },
-    'goto': async () => {
-      const path = prompt('Enter path:');
-      if (path) {
-        try {
-          navigateTo(path.split('/'));
-        } catch (err) {
-          showError('Navigation failed', err instanceof Error ? err.message : 'Invalid path');
-        }
-      }
-    },
-    'refresh': async () => {
-      const currentDir = currentPath.value.join('/') || await getHomeDirectory();
-      await loadDirectory(currentDir);
-      success('Refreshed', 'Directory refreshed');
-    },
-    'copy-path': () => {
-      const selected = getSelectedItems(files.value);
-      if (selected.length > 0) {
-        const paths = selected.map(item => item.path).join('\n');
-        navigator.clipboard.writeText(paths);
-        success('Copied path', `${selected.length} path(s) copied to clipboard`);
-      } else {
-        warning('No selection', 'Please select files to copy their paths');
-      }
-    },
-    'select-all': () => {
-      selectAll(files.value);
-      success('Selected all', `${files.value.length} items selected`);
-    },
-    'new-tab': () => {
-      addTab();
-      success('New tab', 'Created new tab');
-    },
-    'close-tab': () => {
-      if (tabs.value.length > 1) {
-        closeTab(activeTabId.value);
-        success('Tab closed', 'Tab closed successfully');
-      } else {
-        warning('Cannot close', 'Cannot close the last tab');
-      }
-    },
-    'settings': () => {
-      info('Settings', 'Settings panel coming soon');
-    },
-  };
-
-  const handler = commandHandlers[cmd.id];
-  if (handler) {
-    handler();
-  }
-};
-
-const openFile = async (file: FileItem) => {
-  try {
-    await openFileInApp(file.path);
-    success('File opened', `${file.name} opened successfully`);
-  } catch (err) {
-    showError('Failed to open file', err instanceof Error ? err.message : 'Unknown error');
-  }
-};
-
-// File operations
-const handleCopy = () => {
-  const selected = getSelectedItems(files.value);
-  if (selected.length > 0) {
-    copyToClipboard(selected);
-    success('Copied', `${selected.length} item(s) copied to clipboard`);
-  }
-};
-
-const handleCut = () => {
-  const selected = getSelectedItems(files.value);
-  if (selected.length > 0) {
-    cutToClipboard(selected);
-    warning('Cut', `${selected.length} item(s) cut to clipboard`);
-  }
-};
-
-const handlePaste = async () => {
-  if (!hasClipboardItems.value) {
-    warning('Nothing to paste', 'Clipboard is empty');
-    return;
-  }
-
-  try {
-    const currentDir = currentPath.value.join('/') || await getHomeDirectory();
-    await pasteFromClipboard(currentDir, copyItems, moveItems);
-    // Refresh directory after paste
-    await loadDirectory(currentDir);
-    success('Pasted successfully', 'Items pasted');
-  } catch (err) {
-    showError('Paste failed', err instanceof Error ? err.message : 'Unknown error');
-  }
-};
-
-const handleDelete = () => {
-  const selected = getSelectedItems(files.value);
-  if (selected.length === 0) return;
-
-  confirmDialog.value = {
-    isOpen: true,
-    title: 'Confirm Delete',
-    message: `Are you sure you want to permanently delete ${selected.length} item(s)?`,
-    type: 'danger',
-    onConfirm: async () => {
-      try {
-        for (const item of selected) {
-          await deleteItem(item.path);
-        }
-        // Refresh directory
-        const currentDir = currentPath.value.join('/') || await getHomeDirectory();
-        await loadDirectory(currentDir);
-        clearSelection();
-        success('Deleted', `${selected.length} item(s) deleted`);
-      } catch (err) {
-        showError('Delete failed', err instanceof Error ? err.message : 'Unknown error');
-      }
-    },
-  };
-};
-
-const handleRename = async () => {
-  const selected = getSelectedItems(files.value);
-  if (selected.length !== 1) {
-    warning('Invalid selection', 'Please select exactly one item to rename');
-    return;
-  }
-
-  const item = selected[0];
-  const newName = prompt('Enter new name:', item.name);
-  if (!newName || newName === item.name) return;
-
-  try {
-    await renameItem(item.path, newName);
-    // Refresh directory
-    const currentDir = currentPath.value.join('/') || await getHomeDirectory();
-    await loadDirectory(currentDir);
-    success('Renamed', `Renamed to ${newName}`);
-  } catch (err) {
-    showError('Rename failed', err instanceof Error ? err.message : 'Unknown error');
-  }
-};
-
-const handleNewFolder = async () => {
-  const name = prompt('Enter folder name:');
-  if (!name) return;
-
-  try {
-    const currentDir = currentPath.value.join('/') || await getHomeDirectory();
-    await createFolder(currentDir, name);
-    // Refresh directory
-    await loadDirectory(currentDir);
-    success('Folder created', `Created ${name}`);
-  } catch (err) {
-    showError('Create folder failed', err instanceof Error ? err.message : 'Unknown error');
-  }
-};
-
-const handleProperties = () => {
-  const selected = getSelectedItems(files.value);
-  if (selected.length !== 1) {
-    warning('Invalid selection', 'Please select exactly one item to view properties');
-    return;
-  }
-
-  propertiesDialog.value = {
-    isOpen: true,
-    file: selected[0],
-  };
-};
-
-const handleRevealInFinder = async () => {
-  const selected = getSelectedItems(files.value);
-  if (selected.length !== 1) return;
-
-  try {
-    await revealInFinder(selected[0].path);
-  } catch (err) {
-    showError('Failed to reveal', err instanceof Error ? err.message : 'Unknown error');
+  if (cmd.id === 'copy-path') {
+    commands.copyPathCommand(getSelected());
+  } else if (cmd.id === 'select-all') {
+    commands.selectAllCommand(files.value, selectAll);
+  } else {
+    commands.executeCommand(cmd);
   }
 };
 
 // Keyboard shortcuts
-useKeyboard([
+const shortcuts = createKeyboardShortcuts(
   {
-    key: 'k',
-    ctrl: true,
-    description: 'Open command palette',
-    callback: openCommandPalette,
-  },
-  {
-    key: 'Escape',
-    description: 'Close dialogs',
-    callback: () => {
+    openCommandPalette: () => { isCommandPaletteOpen.value = true; },
+    closeDialogs: () => {
       isCommandPaletteOpen.value = false;
       previewFile.value = null;
       clearSelection();
     },
-  },
-  {
-    key: 'a',
-    ctrl: true,
-    description: 'Select all',
-    callback: () => selectAll(files.value),
-  },
-  {
-    key: 't',
-    ctrl: true,
-    description: 'New tab',
-    callback: addTab,
-  },
-  {
-    key: 'w',
-    ctrl: true,
-    description: 'Close tab',
-    callback: () => {
-      if (tabs.value.length > 1) {
+    selectAll: (files: FileItem[]) => selectAll(files),
+    addTab,
+    closeTab: (canClose: boolean) => {
+      if (canClose && tabs.value.length > 1) {
         closeTab(activeTabId.value);
       }
     },
-  },
-  {
-    key: 'Backspace',
-    description: 'Go up',
-    callback: () => { if (canGoUp.value) goUp(); },
-  },
-  {
-    key: 'c',
-    ctrl: true,
-    description: 'Copy',
-    callback: handleCopy,
-  },
-  {
-    key: 'x',
-    ctrl: true,
-    description: 'Cut',
-    callback: handleCut,
-  },
-  {
-    key: 'v',
-    ctrl: true,
-    description: 'Paste',
-    callback: handlePaste,
-  },
-  {
-    key: 'Delete',
-    description: 'Delete',
-    callback: handleDelete,
-  },
-  {
-    key: 'F2',
-    description: 'Rename',
-    callback: handleRename,
-  },
-  {
-    key: 'F5',
-    description: 'Refresh',
-    callback: async () => {
-      const currentDir = currentPath.value.join('/') || await getHomeDirectory();
-      await loadDirectory(currentDir);
+    goUp: (canGoUpValue: boolean) => {
+      if (canGoUpValue) goUp();
+    },
+    handleCopy: () => fileOps.handleCopy(getSelected()),
+    handleCut: () => fileOps.handleCut(getSelected()),
+    handlePaste: () => fileOps.handlePaste(currentPath.value),
+    handleDelete: () => fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm),
+    handleRename: () => fileOps.handleRename(getSelected(), currentPath.value, showInput),
+    handleRefresh: () => fileOps.handleRefresh(currentPath.value),
+    handleNewFolder: () => fileOps.handleNewFolder(currentPath.value, showInput),
+    // Keyboard navigation
+    moveFocusUp: () => moveFocusUp(processedFiles.value),
+    moveFocusDown: () => moveFocusDown(processedFiles.value),
+    moveFocusToFirst: () => moveFocusToFirst(processedFiles.value),
+    moveFocusToLast: () => moveFocusToLast(processedFiles.value),
+    selectFocused: () => selectFocused(),
+    toggleFocusedSelection: () => toggleFocusedSelection(),
+    openFocusedItem: () => {
+      const item = getFocusedItem(processedFiles.value);
+      if (item) {
+        handleItemDoubleClick(item);
+      }
     },
   },
-  {
-    key: 'n',
-    ctrl: true,
-    shift: true,
-    description: 'New folder',
-    callback: handleNewFolder,
+  () => files.value
+);
+
+useKeyboard(shortcuts);
+
+// Context menu handlers
+const contextMenuHandlers = {
+  open: () => {
+    if (contextMenu.value?.item) {
+      fileOps.handleOpenFile(contextMenu.value.item);
+    }
   },
-]);
+  copy: () => fileOps.handleCopy(getSelected()),
+  cut: () => fileOps.handleCut(getSelected()),
+  paste: () => fileOps.handlePaste(currentPath.value),
+  rename: () => fileOps.handleRename(getSelected(), currentPath.value, showInput),
+  delete: () => fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm),
+  properties: () => {
+    const selected = getSelected();
+    if (selected.length === 1) {
+      propertiesDialog.value = { isOpen: true, file: selected[0] };
+    }
+  },
+};
 
 // Watch current path and load directory
-watch(currentPath, async (newPath) => {
-  // Reconstruct full path with leading slash
-  let pathString = newPath.join('/');
-
-  // Add leading slash if path is not empty and doesn't start with slash
-  if (pathString && !pathString.startsWith('/')) {
-    pathString = '/' + pathString;
-  }
-
-  await loadDirectory(pathString || await getHomeDirectory());
+watch(currentPath, async () => {
+  const pathString = await fileOps.getCurrentDirectory(currentPath.value);
+  await loadDirectory(pathString);
   clearSelection();
+  // Устанавливаем фокус на первый элемент после загрузки
+  if (processedFiles.value.length > 0) {
+    setFocused(processedFiles.value[0].id);
+  } else {
+    setFocused(null);
+  }
 }, { immediate: true });
 
 // Click outside handler
@@ -456,7 +317,7 @@ onMounted(() => {
       <div class="px-2 py-0.5 hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] cursor-pointer">Favorites</div>
       <div class="px-2 py-0.5 hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] cursor-pointer">Tools</div>
       <div class="px-2 py-0.5 hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] cursor-pointer">Help</div>
-      <div class="ml-auto px-2 text-[#666]">Ctrl+K for quick search • Ctrl+A select all • Backspace go up</div>
+      <div class="ml-auto px-2 text-[#666]">Arrows: navigate • Space: select • Enter: open • Ctrl+K: search</div>
     </div>
 
     <!-- Toolbar -->
@@ -473,12 +334,12 @@ onMounted(() => {
       @go-up="goUp"
       @go-home="goHome"
       @navigate-to-breadcrumb="navigateToBreadcrumb"
-      @navigate-to-path="(path) => navigateTo(path.split('/').filter(p => p))"
+      @navigate-to-path="handleNavigateToPath"
       @switch-tab="switchTab"
       @close-tab="closeTab"
       @add-tab="addTab"
       @update:view-mode="(mode) => viewMode = mode"
-      @open-command-palette="openCommandPalette"
+      @open-command-palette="() => isCommandPaletteOpen = true"
     />
 
     <!-- Main Content -->
@@ -493,6 +354,7 @@ onMounted(() => {
           :items="processedFiles"
           :view-mode="viewMode"
           :selected-ids="selectedIds"
+          :focused-id="focusedId"
           :is-loading="isLoading"
           :is-dragging="isDragging"
           :drag-target-id="dragOverId"
@@ -503,13 +365,18 @@ onMounted(() => {
           @drag-over="handleDragOver"
           @drag-leave="handleDragLeave"
           @drop="handleItemDrop"
+          @toggle-selection="(item) => handleItemClick(item, files, { ctrlKey: true } as MouseEvent)"
+          @copy-item="(item) => fileOps.handleCopy([item])"
+          @cut-item="(item) => fileOps.handleCut([item])"
+          @delete-item="(item) => fileOps.handleDelete([item], currentPath, clearSelection, showConfirm)"
+          @rename-item="(item) => fileOps.handleRename([item], currentPath, showInput)"
         />
 
         <!-- Preview Panel -->
         <Preview
           :file="previewFile"
           @close="previewFile = null"
-          @open="openFile"
+          @open="fileOps.handleOpenFile"
         />
       </div>
     </div>
@@ -527,13 +394,13 @@ onMounted(() => {
       :x="contextMenu.x"
       :y="contextMenu.y"
       :item="contextMenu.item"
-      @open="() => contextMenu?.item && openFile(contextMenu.item)"
-      @copy="handleCopy"
-      @cut="handleCut"
-      @paste="handlePaste"
-      @rename="handleRename"
-      @delete="handleDelete"
-      @properties="handleProperties"
+      @open="contextMenuHandlers.open"
+      @copy="contextMenuHandlers.copy"
+      @cut="contextMenuHandlers.cut"
+      @paste="contextMenuHandlers.paste"
+      @rename="contextMenuHandlers.rename"
+      @delete="contextMenuHandlers.delete"
+      @properties="contextMenuHandlers.properties"
       @close="closeContextMenu"
     />
 
@@ -546,15 +413,26 @@ onMounted(() => {
       :title="confirmDialog.title"
       :message="confirmDialog.message"
       :type="confirmDialog.type"
-      @confirm="() => { confirmDialog.onConfirm(); confirmDialog.isOpen = false; }"
-      @cancel="confirmDialog.isOpen = false"
+      @confirm="() => { confirmDialog.onConfirm(); closeConfirm(); }"
+      @cancel="closeConfirm"
     />
 
     <!-- Properties Dialog -->
     <PropertiesDialog
       :is-open="propertiesDialog.isOpen"
       :file="propertiesDialog.file"
-      @close="propertiesDialog.isOpen = false"
+      @close="closeProperties"
+    />
+
+    <!-- Input Dialog -->
+    <InputDialog
+      :is-open="inputDialog.isOpen"
+      :title="inputDialog.title"
+      :label="inputDialog.label"
+      :default-value="inputDialog.defaultValue"
+      :placeholder="inputDialog.placeholder"
+      @confirm="(value) => { inputDialog.onConfirm(value); closeInput(); }"
+      @cancel="closeInput"
     />
 
     <!-- Status Bar -->

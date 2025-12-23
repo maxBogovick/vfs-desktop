@@ -1,0 +1,110 @@
+import { ref } from 'vue';
+import type { FileItem } from '../types';
+
+export function useDialogs() {
+  // Confirm Dialog
+  const confirmDialog = ref<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'warning' | 'danger' | 'info';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'warning',
+    onConfirm: () => {},
+  });
+
+  const showConfirm = (
+    title: string,
+    message: string,
+    onConfirm: () => void,
+    type: 'warning' | 'danger' | 'info' = 'warning'
+  ) => {
+    confirmDialog.value = {
+      isOpen: true,
+      title,
+      message,
+      type,
+      onConfirm,
+    };
+  };
+
+  const closeConfirm = () => {
+    confirmDialog.value.isOpen = false;
+  };
+
+  // Properties Dialog
+  const propertiesDialog = ref<{ isOpen: boolean; file: FileItem | null }>({
+    isOpen: false,
+    file: null,
+  });
+
+  const showProperties = (file: FileItem) => {
+    propertiesDialog.value = {
+      isOpen: true,
+      file,
+    };
+  };
+
+  const closeProperties = () => {
+    propertiesDialog.value.isOpen = false;
+  };
+
+  // Input Dialog
+  const inputDialog = ref<{
+    isOpen: boolean;
+    title: string;
+    label: string;
+    defaultValue: string;
+    placeholder: string;
+    onConfirm: (value: string) => void;
+  }>({
+    isOpen: false,
+    title: '',
+    label: '',
+    defaultValue: '',
+    placeholder: '',
+    onConfirm: () => {},
+  });
+
+  const showInput = (
+    title: string,
+    label: string,
+    onConfirm: (value: string) => void,
+    defaultValue = '',
+    placeholder = ''
+  ) => {
+    inputDialog.value = {
+      isOpen: true,
+      title,
+      label,
+      defaultValue,
+      placeholder,
+      onConfirm,
+    };
+  };
+
+  const closeInput = () => {
+    inputDialog.value.isOpen = false;
+  };
+
+  return {
+    // Confirm Dialog
+    confirmDialog,
+    showConfirm,
+    closeConfirm,
+
+    // Properties Dialog
+    propertiesDialog,
+    showProperties,
+    closeProperties,
+
+    // Input Dialog
+    inputDialog,
+    showInput,
+    closeInput,
+  };
+}

@@ -78,3 +78,15 @@ pub fn read_file_content(path: String, max_size: Option<u64>) -> Result<String, 
     let fs = get_filesystem();
     fs.read_file_content(&path, max_size).map_err(|e| e.message)
 }
+
+#[tauri::command]
+pub fn normalize_path(path: String) -> Result<String, String> {
+    let fs = get_filesystem();
+    fs.normalize_path(&path).map_err(|e| e.message)
+}
+
+#[tauri::command]
+pub fn get_path_suggestions(partial_path: String) -> Result<Vec<String>, String> {
+    let fs = get_filesystem();
+    fs.get_path_suggestions(&partial_path).map_err(|e| e.message)
+}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import type { Tab, ViewMode } from '../types';
 
 interface Props {
@@ -32,6 +33,10 @@ const emit = defineEmits<Emits>();
 const isEditMode = ref(false);
 const editPathValue = ref('');
 const pathInputRef = ref<HTMLInputElement | null>(null);
+const suggestions = ref<string[]>([]);
+const selectedSuggestionIndex = ref(-1);
+const showSuggestions = ref(false);
+let suggestionTimeout: number | null = null;
 
 const fullPath = computed(() => {
   const path = props.currentPath.join('/');
@@ -49,6 +54,15 @@ const enterEditMode = () => {
 
 const exitEditMode = () => {
   isEditMode.value = false;
+  showSuggestions.value = false;
+  suggestions.value = [];
+  selectedSuggestionIndex.value = -1;
+
+  // Очищаем таймер если есть
+  if (suggestionTimeout !== null) {
+    clearTimeout(suggestionTimeout);
+    suggestionTimeout = null;
+  }
 };
 
 const handlePathSubmit = () => {
@@ -58,11 +72,86 @@ const handlePathSubmit = () => {
   exitEditMode();
 };
 
+// Получение подсказок для автодополнения
+const fetchSuggestions = async (path: string) => {
+  if (!path || path.length < 1) {
+    suggestions.value = [];
+    showSuggestions.value = false;
+    return;
+  }
+
+  try {
+    const result = await invoke<string[]>('get_path_suggestions', { partialPath: path });
+    suggestions.value = result;
+    showSuggestions.value = result.length > 0;
+    selectedSuggestionIndex.value = -1;
+  } catch (e) {
+    suggestions.value = [];
+    showSuggestions.value = false;
+  }
+};
+
+// Обработка ввода с debounce
+const handlePathInput = () => {
+  // Очищаем предыдущий таймер
+  if (suggestionTimeout !== null) {
+    clearTimeout(suggestionTimeout);
+  }
+
+  // Запускаем новый таймер с задержкой 300мс
+  suggestionTimeout = window.setTimeout(() => {
+    fetchSuggestions(editPathValue.value);
+  }, 300);
+};
+
+// Выбор подсказки
+const selectSuggestion = (suggestion: string) => {
+  editPathValue.value = suggestion;
+  showSuggestions.value = false;
+  suggestions.value = [];
+  selectedSuggestionIndex.value = -1;
+  pathInputRef.value?.focus();
+};
+
 const handlePathKeydown = (event: KeyboardEvent) => {
   if (event.key === 'Escape') {
-    exitEditMode();
+    if (showSuggestions.value) {
+      showSuggestions.value = false;
+      suggestions.value = [];
+      selectedSuggestionIndex.value = -1;
+    } else {
+      exitEditMode();
+    }
   } else if (event.key === 'Enter') {
-    handlePathSubmit();
+    if (showSuggestions.value && selectedSuggestionIndex.value >= 0) {
+      // Выбираем выделенную подсказку
+      selectSuggestion(suggestions.value[selectedSuggestionIndex.value]);
+      event.preventDefault();
+    } else {
+      handlePathSubmit();
+    }
+  } else if (event.key === 'ArrowDown') {
+    if (showSuggestions.value && suggestions.value.length > 0) {
+      event.preventDefault();
+      selectedSuggestionIndex.value = Math.min(
+        selectedSuggestionIndex.value + 1,
+        suggestions.value.length - 1
+      );
+    }
+  } else if (event.key === 'ArrowUp') {
+    if (showSuggestions.value && suggestions.value.length > 0) {
+      event.preventDefault();
+      selectedSuggestionIndex.value = Math.max(selectedSuggestionIndex.value - 1, 0);
+    }
+  } else if (event.key === 'Tab') {
+    if (showSuggestions.value && suggestions.value.length > 0) {
+      event.preventDefault();
+      // Автодополнение первой подсказкой
+      const suggestionToUse = selectedSuggestionIndex.value >= 0
+        ? suggestions.value[selectedSuggestionIndex.value]
+        : suggestions.value[0];
+      selectSuggestion(suggestionToUse);
+    }
   }
 };
 
@@ -119,20 +208,22 @@ watch(fullPath, () => {
         <span class="text-[11px] text-gray-600 font-bold">Address</span>
 
         <!-- Address Input/Breadcrumb -->
-        <div
-          class="flex-1 bg-white border-2 border-[#91A7D0] rounded h-[26px] flex items-center overflow-hidden shadow-inner"
-        >
-          <!-- Edit Mode: Text Input -->
-          <input
-            v-if="isEditMode"
-            ref="pathInputRef"
-            v-model="editPathValue"
-            @blur="handlePathSubmit"
-            @keydown="handlePathKeydown"
-            type="text"
-            class="flex-1 px-2 text-[11px] outline-none bg-white"
-            placeholder="Enter path..."
-          />
+        <div class="flex-1 relative">
+          <div
+            class="bg-white border-2 border-[#91A7D0] rounded h-[26px] flex items-center overflow-hidden shadow-inner"
+          >
+            <!-- Edit Mode: Text Input -->
+            <input
+              v-if="isEditMode"
+              ref="pathInputRef"
+              v-model="editPathValue"
+              @input="handlePathInput"
+              @blur="() => setTimeout(handlePathSubmit, 200)"
+              @keydown="handlePathKeydown"
+              type="text"
+              class="flex-1 px-2 text-[11px] outline-none bg-white"
+              placeholder="Enter path..."
+            />
 
           <!-- View Mode: Breadcrumb -->
           <div
@@ -174,6 +265,28 @@ watch(fullPath, () => {
             >
               🔄
             </button>
+          </div>
+        </div>
+
+          <!-- Autocomplete Suggestions Dropdown -->
+          <div
+            v-if="isEditMode && showSuggestions && suggestions.length > 0"
+            class="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-[#91A7D0] rounded shadow-lg max-h-[300px] overflow-y-auto z-50"
+          >
+            <div
+              v-for="(suggestion, index) in suggestions"
+              :key="suggestion"
+              @mousedown.prevent="selectSuggestion(suggestion)"
+              :class="[
+                'px-3 py-2 text-[11px] cursor-pointer flex items-center gap-2',
+                index === selectedSuggestionIndex
+                  ? 'bg-[#0054E3] text-white'
+                  : 'hover:bg-[#F0F8FF]'
+              ]"
+            >
+              <span class="text-sm">📁</span>
+              <span class="flex-1 truncate">{{ suggestion }}</span>
+            </div>
           </div>
         </div>
 

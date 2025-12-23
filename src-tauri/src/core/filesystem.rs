@@ -92,4 +92,12 @@ pub trait FileSystem: Send + Sync {
 
     /// Показать файл в файловом менеджере ОС
     fn reveal_in_finder(&self, path: &str) -> FileSystemResult<()>;
+
+    /// Нормализация пути (раскрытие ~, резолв к абсолютному пути)
+    /// Проверяет существование пути и возвращает канонический абсолютный путь
+    fn normalize_path(&self, path: &str) -> FileSystemResult<String>;
+
+    /// Получение подсказок для автодополнения путей
+    /// Возвращает список директорий, соответствующих частичному пути
+    fn get_path_suggestions(&self, partial_path: &str) -> FileSystemResult<Vec<String>>;
 }

@@ -21,7 +21,7 @@ interface Emits {
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
-const handleAction = (action: keyof Omits) => {
+const handleAction = (action: keyof Emits) => {
   emit(action);
   emit('close');
 };

@@ -151,6 +151,7 @@ export function useFileSystem() {
     try {
       await invoke('copy_items', { sources, destination });
     } catch (e) {
+      console.error(e);
       throw new Error(e instanceof Error ? e.message : 'Failed to copy items');
     }
   };
@@ -217,6 +218,15 @@ export function useFileSystem() {
     }
   };
 
+  // Normalize path (expand ~, resolve to absolute path)
+  const normalizePath = async (path: string): Promise<string> => {
+    try {
+      return await invoke('normalize_path', { path });
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Failed to normalize path');
+    }
+  };
+
   return {
     files,
     isLoading,
@@ -234,5 +244,6 @@ export function useFileSystem() {
     getSystemFolders,
     readFileContent,
     formatFileSize,
+    normalizePath,
   };
 }

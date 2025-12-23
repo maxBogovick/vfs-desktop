@@ -5,6 +5,7 @@ export function useSelection() {
   const selectedIds = ref<Set<string>>(new Set());
   const lastSelectedId = ref<string | null>(null);
   const rangeAnchorId = ref<string | null>(null);
+  const focusedId = ref<string | null>(null); // Focused item для keyboard navigation
 
   const selectedCount = computed(() => selectedIds.value.size);
 
@@ -94,6 +95,9 @@ export function useSelection() {
 
   // Handle item click with modifiers
   const handleItemClick = (item: FileItem, items: FileItem[], event: MouseEvent) => {
+    // Всегда устанавливаем фокус на кликнутый элемент
+    focusedId.value = item.id;
+
     if (event.shiftKey) {
       // Range selection
       selectRange(items, item.id);
@@ -122,10 +126,87 @@ export function useSelection() {
     selectedIds.value = newSelection;
   };
 
+  // Check if item is focused
+  const isFocused = (id: string) => {
+    return focusedId.value === id;
+  };
+
+  // Set focused item
+  const setFocused = (id: string | null) => {
+    focusedId.value = id;
+  };
+
+  // Keyboard navigation: move focus up
+  const moveFocusUp = (items: FileItem[]) => {
+    if (items.length === 0) return;
+
+    if (!focusedId.value) {
+      // Если ничего не в фокусе, фокусируем первый элемент
+      focusedId.value = items[0].id;
+      return;
+    }
+
+    const currentIndex = items.findIndex(item => item.id === focusedId.value);
+    if (currentIndex > 0) {
+      focusedId.value = items[currentIndex - 1].id;
+    }
+  };
+
+  // Keyboard navigation: move focus down
+  const moveFocusDown = (items: FileItem[]) => {
+    if (items.length === 0) return;
+
+    if (!focusedId.value) {
+      // Если ничего не в фокусе, фокусируем первый элемент
+      focusedId.value = items[0].id;
+      return;
+    }
+
+    const currentIndex = items.findIndex(item => item.id === focusedId.value);
+    if (currentIndex < items.length - 1) {
+      focusedId.value = items[currentIndex + 1].id;
+    }
+  };
+
+  // Keyboard navigation: move to first item
+  const moveFocusToFirst = (items: FileItem[]) => {
+    if (items.length > 0) {
+      focusedId.value = items[0].id;
+    }
+  };
+
+  // Keyboard navigation: move to last item
+  const moveFocusToLast = (items: FileItem[]) => {
+    if (items.length > 0) {
+      focusedId.value = items[items.length - 1].id;
+    }
+  };
+
+  // Keyboard: select focused item
+  const selectFocused = () => {
+    if (focusedId.value) {
+      selectSingle(focusedId.value);
+    }
+  };
+
+  // Keyboard: toggle focused item selection
+  const toggleFocusedSelection = () => {
+    if (focusedId.value) {
+      toggleSelection(focusedId.value, true);
+    }
+  };
+
+  // Get focused item
+  const getFocusedItem = (items: FileItem[]): FileItem | null => {
+    if (!focusedId.value) return null;
+    return items.find(item => item.id === focusedId.value) || null;
+  };
+
   return {
     selectedIds,
     lastSelectedId,
     rangeAnchorId,
+    focusedId,
     selectedCount,
     hasSelection,
     isSingleSelection,
@@ -141,5 +222,14 @@ export function useSelection() {
     handleItemClick,
     getSelectedItems,
     invertSelection,
+    isFocused,
+    setFocused,
+    moveFocusUp,
+    moveFocusDown,
+    moveFocusToFirst,
+    moveFocusToLast,
+    selectFocused,
+    toggleFocusedSelection,
+    getFocusedItem,
   };
 }
