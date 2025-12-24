@@ -100,3 +100,12 @@ export interface FileSystemEntry {
   created?: number;
   accessed?: number;
 }
+
+export type FileSystemBackend = 'real' | 'virtual';
+
+export interface AppConfig {
+  filesystem_backend: FileSystemBackend;
+  show_hidden_files: boolean;
+  default_view_mode: ViewMode;
+  theme: string;
+}

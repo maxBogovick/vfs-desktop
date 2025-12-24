@@ -10,6 +10,7 @@ import Notifications from './components/Notifications.vue';
 import ConfirmDialog from './components/ConfirmDialog.vue';
 import PropertiesDialog from './components/PropertiesDialog.vue';
 import InputDialog from './components/InputDialog.vue';
+import Settings from './components/Settings.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useNavigation } from './composables/useNavigation';
@@ -123,6 +124,7 @@ const viewMode = ref<ViewMode>('list');
 const isCommandPaletteOpen = ref(false);
 const contextMenu = ref<{ x: number; y: number; item: FileItem } | null>(null);
 const previewFile = ref<FileItem | null>(null);
+const showSettings = ref(false);
 
 // Computed
 const processedFiles = computed(() => processFiles(files.value));
@@ -238,7 +240,7 @@ const commands = useCommands({
   onSelectAll: (allFiles: FileItem[]) => commands.selectAllCommand(allFiles, selectAll),
   onNewTab: addTab,
   onCloseTab: () => commands.closeTabCommand(tabs.value.length, closeTab, activeTabId.value),
-  onSettings: () => {},
+  onSettings: () => { showSettings.value = true; },
 });
 
 const executeCommand = (cmd: { id: string }) => {
@@ -277,6 +279,7 @@ const shortcuts = createKeyboardShortcuts(
     handleRename: () => fileOps.handleRename(getSelected(), currentPath.value, showInput),
     handleRefresh: () => fileOps.handleRefresh(currentPath.value),
     handleNewFolder: () => fileOps.handleNewFolder(currentPath.value, showInput),
+    openSettings: () => { showSettings.value = true; },
     // Keyboard navigation
     moveFocusUp: () => moveFocusUp(processedFiles.value),
     moveFocusDown: () => moveFocusDown(processedFiles.value),
@@ -472,6 +475,12 @@ onMounted(() => {
       :placeholder="inputDialog.placeholder"
       @confirm="(value) => { inputDialog.onConfirm(value); closeInput(); }"
       @cancel="closeInput"
+    />
+
+    <!-- Settings -->
+    <Settings
+      v-if="showSettings"
+      @close="showSettings = false"
     />
 
     <!-- Status Bar -->

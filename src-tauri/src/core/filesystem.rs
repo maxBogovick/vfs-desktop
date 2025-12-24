@@ -52,7 +52,7 @@ pub struct FileSystemEntry {
 
 /// Trait для различных реализаций файловой системы
 /// Может быть реализован для:
-/// - Real OS filesystem (fs::*)
+/// - Real OS filesystem (fs.json::*)
 /// - Virtual filesystem (in-memory)
 /// - Database-backed filesystem
 pub trait FileSystem: Send + Sync {

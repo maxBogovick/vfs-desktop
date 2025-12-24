@@ -1,6 +1,7 @@
 pub mod api;
 pub mod application;
 pub mod core;
+pub mod config;
 mod error;
 mod commands;
 
@@ -18,6 +19,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             greet,
+            // Filesystem commands
             read_directory,
             delete_item,
             rename_item,
@@ -32,7 +34,11 @@ pub fn run() {
             read_file_content,
             normalize_path,
             get_path_suggestions,
-            open_terminal
+            open_terminal,
+            // Config commands
+            get_config,
+            update_config,
+            set_filesystem_backend
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

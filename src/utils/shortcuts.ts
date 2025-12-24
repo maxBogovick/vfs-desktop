@@ -15,6 +15,7 @@ interface ShortcutHandlers {
   handleRename: () => void;
   handleRefresh: () => void;
   handleNewFolder: () => void;
+  openSettings: () => void;
   // Keyboard navigation
   moveFocusUp: () => void;
   moveFocusDown: () => void;
@@ -103,6 +104,12 @@ export function createKeyboardShortcuts(
       shift: true,
       description: 'New folder',
       callback: handlers.handleNewFolder,
+    },
+    {
+      key: ',',
+      ctrl: true,
+      description: 'Open settings',
+      callback: handlers.openSettings,
     },
     // Keyboard navigation
     {
