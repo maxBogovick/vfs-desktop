@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { ref, computed, watch, onMounted } from 'vue';
 import Toolbar from './components/Toolbar.vue';
 import Sidebar from './components/Sidebar.vue';
 import FileList from './components/FileList.vue';
@@ -117,51 +116,19 @@ const {
 const {
   sidebarWidth,
   previewWidth,
+  expandedFolders,
+  sidebarSectionsExpanded,
   loadUIState,
-  saveTabsState,
-  saveCompleteState,
-  saveSidebarWidth,
-  savePreviewWidth,
-  saveWindowState,
 } = useUIState();
 
-// Handle sidebar resize
+// Handle sidebar resize - напрямую обновляем ref, watch в App.vue сам сохранит
 const handleSidebarResize = (width: number) => {
-  saveSidebarWidth(width);
+  sidebarWidth.value = width;
 };
 
-// Handle preview resize
+// Handle preview resize - напрямую обновляем ref, watch в App.vue сам сохранит
 const handlePreviewResize = (width: number) => {
-  savePreviewWidth(width);
-};
-
-// Window state management
-const appWindow = getCurrentWindow();
-let windowStateTimer: ReturnType<typeof setTimeout> | null = null;
-
-const saveCurrentWindowState = async () => {
-  try {
-    const position = await appWindow.outerPosition();
-    const size = await appWindow.outerSize();
-    const isMaximized = await appWindow.isMaximized();
-
-    await saveWindowState({
-      x: position.x,
-      y: position.y,
-      width: size.width,
-      height: size.height,
-      maximized: isMaximized,
-    });
-  } catch (error) {
-    console.error('Failed to save window state:', error);
-  }
-};
-
-const debouncedSaveWindowState = () => {
-  if (windowStateTimer) {
-    clearTimeout(windowStateTimer);
-  }
-  windowStateTimer = setTimeout(saveCurrentWindowState, 500);
+  previewWidth.value = width;
 };
 
 const handleBackgroundDrop = async (event: DragEvent) => {
@@ -505,15 +472,50 @@ watch(currentPath, async () => {
   }
 }, { immediate: true });
 
-// Save UI state when tabs change
-watch([tabs, activeTabId], () => {
-  saveTabsState(tabs.value, activeTabId.value);
-}, { deep: true });
+// Save tabs and paths - DIRECT SIMPLE VERSION
+// ВАЖНО: deep: true чтобы отслеживать изменения внутри объектов!
+watch([tabs, activeTabId, currentPath, expandedFolders, sidebarSectionsExpanded], async () => {
+  console.log('[App] 🔥 State changed:');
+  console.log('  - Tabs:', tabs.value.length);
+  console.log('  - Active tab:', activeTabId.value);
+  console.log('  - Current path:', currentPath.value);
+  console.log('  - Expanded folders:', expandedFolders.value.length);
+  console.log('  - Sidebar quickAccess:', sidebarSectionsExpanded.value.quickAccess);
+  console.log('  - Sidebar folderTree:', sidebarSectionsExpanded.value.folderTree);
+  console.log('  - Sidebar favorites:', sidebarSectionsExpanded.value.favorites);
 
-// Save last path when it changes
-watch(currentPath, () => {
-  saveCompleteState(tabs.value, activeTabId.value, currentPath.value);
-});
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+
+    // Сохраняем все табы со своими путями
+    const tabsToSave = tabs.value.map(tab => ({
+      id: tab.id,
+      path: tab.path,
+      name: tab.name,
+    }));
+
+    const stateToSave = {
+      sidebar_width: sidebarWidth.value,
+      preview_width: previewWidth.value,
+      tabs: tabsToSave,
+      active_tab_id: activeTabId.value,
+      last_path: currentPath.value,
+      window: { maximized: false },
+      sidebar: {
+        expanded_folders: expandedFolders.value,
+        quick_access_expanded: sidebarSectionsExpanded.value.quickAccess,
+        folder_tree_expanded: sidebarSectionsExpanded.value.folderTree,
+        favorites_expanded: sidebarSectionsExpanded.value.favorites,
+      }
+    };
+
+    console.log('[App] 💾 Saving state with sidebar:', stateToSave.sidebar);
+    await invoke('save_ui_state', { uiState: stateToSave });
+    console.log('[App] ✅ Save successful!');
+  } catch (error) {
+    console.error('[App] ❌ Failed to save:', error);
+  }
+}, { deep: true });
 
 // Click outside handler
 onMounted(async () => {
@@ -522,12 +524,15 @@ onMounted(async () => {
   // Load bookmarks
   await loadBookmarks();
 
-  // Load UI state
+  // Load UI state and restore tabs
+  // ВАЖНО: сначала загружаем через useUIState чтобы sidebar состояние восстановилось
   const uiState = await loadUIState();
+  console.log('[App] ===== Loaded UI state:', uiState);
 
-  // Restore tabs if available
+  // Восстановить табы если есть
   if (uiState && uiState.tabs && uiState.tabs.length > 0) {
-    // Restore tabs from saved state
+    console.log('[App] ✅ Restoring', uiState.tabs.length, 'tabs');
+
     tabs.value = uiState.tabs.map(tabState => ({
       id: tabState.id,
       path: tabState.path,
@@ -536,53 +541,17 @@ onMounted(async () => {
       historyIndex: 0,
     }));
 
-    // Restore active tab
+    // Восстановить активный таб
     if (uiState.active_tab_id) {
+      console.log('[App] ✅ Restoring active tab:', uiState.active_tab_id);
       activeTabId.value = uiState.active_tab_id;
     }
-  } else if (uiState?.last_path && uiState.last_path.length > 0) {
-    // Restore last path if tabs not available
+  } else if (uiState && uiState.last_path && uiState.last_path.length > 0) {
+    console.log('[App] ✅ Restoring last path:', uiState.last_path);
     navigateTo(uiState.last_path);
+  } else {
+    console.log('[App] ℹ️ No tabs or path to restore');
   }
-
-  // Restore window state
-  if (uiState?.window) {
-    try {
-      const { window: windowState } = uiState;
-
-      // Restore window size and position
-      if (windowState.width && windowState.height) {
-        await appWindow.setSize({ width: windowState.width, height: windowState.height });
-      }
-
-      if (windowState.x !== undefined && windowState.y !== undefined) {
-        await appWindow.setPosition({ x: windowState.x, y: windowState.y });
-      }
-
-      // Restore maximized state
-      if (windowState.maximized) {
-        await appWindow.maximize();
-      }
-    } catch (error) {
-      console.error('Failed to restore window state:', error);
-    }
-  }
-
-  // Listen for window resize events
-  const resizeUnlisten = await appWindow.onResized(() => {
-    debouncedSaveWindowState();
-  });
-
-  // Listen for window move events
-  const moveUnlisten = await appWindow.onMoved(() => {
-    debouncedSaveWindowState();
-  });
-
-  // Cleanup listeners on unmount
-  onUnmounted(() => {
-    resizeUnlisten();
-    moveUnlisten();
-  });
 });
 </script>
 

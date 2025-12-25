@@ -92,7 +92,11 @@ const getFileIcon = (item: FileItem) => {
 };
 
 const toggleSection = (section: keyof typeof sidebarSectionsExpanded.value) => {
-  sidebarSectionsExpanded.value[section] = !sidebarSectionsExpanded.value[section];
+  const oldValue = sidebarSectionsExpanded.value[section];
+  sidebarSectionsExpanded.value[section] = !oldValue;
+  const newValue = sidebarSectionsExpanded.value[section];
+  console.log(`[Sidebar] 🔄 Toggled ${section}: ${oldValue} -> ${newValue}`);
+  console.log('[Sidebar] Current state:', sidebarSectionsExpanded.value);
 };
 
 const navigateTo = (path: string) => {
