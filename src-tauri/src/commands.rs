@@ -2,9 +2,16 @@ use crate::api::virtual_fs::VirtualFileSystem;
 use crate::api::RealFileSystem;
 use crate::config::{AppConfig, Bookmark, FileSystemBackend, UIState};
 use crate::core::{FileSystem, FileSystemEntry};
+use crate::progress::{emit_progress, OperationType, OPERATIONS_MANAGER};
+use crate::file_operations::{
+    calculate_total_size, copy_items_with_progress, delete_items_with_progress,
+    move_items_with_progress,
+};
 use once_cell::sync::Lazy;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+use tauri::{AppHandle, Emitter, Runtime};
 
 // Глобальное состояние конфигурации
 static APP_CONFIG: Lazy<Arc<RwLock<AppConfig>>> = Lazy::new(|| {
@@ -300,4 +307,161 @@ pub fn save_ui_state(ui_state: UIState) -> Result<(), String> {
     println!("[save_ui_state] ✅ Saved successfully to {:?}", config_path);
 
     Ok(())
+}
+
+// ====== Команды для операций с прогрессом ======
+
+/// Копирование файлов с прогрессом
+#[tauri::command]
+pub async fn copy_items_with_progress_command<R: Runtime>(
+    app: AppHandle<R>,
+    operation_id: String,
+    sources: Vec<String>,
+    destination: String,
+) -> Result<(), String> {
+    // Вычисляем общий размер
+    let (total_bytes, total_items) = calculate_total_size(&sources)
+        .map_err(|e| format!("Failed to calculate size: {}", e))?;
+
+    // Создаем трекер прогресса
+    let tracker = OPERATIONS_MANAGER.create_operation(
+        operation_id.clone(),
+        OperationType::Copy,
+        total_bytes,
+        total_items,
+    );
+
+    // Отправляем начальное событие
+    emit_progress(&app, &tracker);
+
+    // Выполняем операцию
+    match copy_items_with_progress(&sources, &destination, &tracker, &app) {
+        Ok(_) => {
+            // Убеждаемся, что прогресс на 100%
+            tracker.set_total_bytes(tracker.get_current_bytes());
+            tracker.mark_completed();
+            // Принудительно отправляем финальное событие
+            let event = tracker.get_progress_event();
+            let _ = app.emit("file-operation-progress", event);
+            Ok(())
+        }
+        Err(e) => {
+            tracker.mark_failed(e.message.clone());
+            emit_progress(&app, &tracker);
+            Err(e.message)
+        }
+    }
+}
+
+/// Перемещение файлов с прогрессом
+#[tauri::command]
+pub async fn move_items_with_progress_command<R: Runtime>(
+    app: AppHandle<R>,
+    operation_id: String,
+    sources: Vec<String>,
+    destination: String,
+) -> Result<(), String> {
+    // Вычисляем общий размер
+    let (total_bytes, total_items) = calculate_total_size(&sources)
+        .map_err(|e| format!("Failed to calculate size: {}", e))?;
+
+    // Создаем трекер прогресса
+    let tracker = OPERATIONS_MANAGER.create_operation(
+        operation_id.clone(),
+        OperationType::Move,
+        total_bytes,
+        total_items,
+    );
+
+    // Отправляем начальное событие
+    emit_progress(&app, &tracker);
+
+    // Выполняем операцию
+    match move_items_with_progress(&sources, &destination, &tracker, &app) {
+        Ok(_) => {
+            // Убеждаемся, что прогресс на 100%
+            tracker.set_total_bytes(tracker.get_current_bytes());
+            tracker.mark_completed();
+            // Принудительно отправляем финальное событие
+            let event = tracker.get_progress_event();
+            let _ = app.emit("file-operation-progress", event);
+            Ok(())
+        }
+        Err(e) => {
+            tracker.mark_failed(e.message.clone());
+            emit_progress(&app, &tracker);
+            Err(e.message)
+        }
+    }
+}
+
+/// Удаление файлов с прогрессом
+#[tauri::command]
+pub async fn delete_items_with_progress_command<R: Runtime>(
+    app: AppHandle<R>,
+    operation_id: String,
+    paths: Vec<String>,
+) -> Result<(), String> {
+    // Вычисляем общий размер
+    let (total_bytes, total_items) = calculate_total_size(&paths)
+        .map_err(|e| format!("Failed to calculate size: {}", e))?;
+
+    // Создаем трекер прогресса
+    let tracker = OPERATIONS_MANAGER.create_operation(
+        operation_id.clone(),
+        OperationType::Delete,
+        total_bytes,
+        total_items,
+    );
+
+    // Отправляем начальное событие
+    emit_progress(&app, &tracker);
+
+    // Выполняем операцию
+    match delete_items_with_progress(&paths, &tracker, &app) {
+        Ok(_) => {
+            // Убеждаемся, что прогресс на 100%
+            tracker.set_total_bytes(tracker.get_current_bytes());
+            tracker.mark_completed();
+            // Принудительно отправляем финальное событие
+            let event = tracker.get_progress_event();
+            let _ = app.emit("file-operation-progress", event);
+            Ok(())
+        }
+        Err(e) => {
+            tracker.mark_failed(e.message.clone());
+            emit_progress(&app, &tracker);
+            Err(e.message)
+        }
+    }
+}
+
+/// Отмена операции
+#[tauri::command]
+pub fn cancel_operation(operation_id: String) -> Result<(), String> {
+    if OPERATIONS_MANAGER.cancel_operation(&operation_id) {
+        Ok(())
+    } else {
+        Err(format!("Operation not found: {}", operation_id))
+    }
+}
+
+/// Пауза операции
+#[tauri::command]
+pub fn pause_operation(operation_id: String) -> Result<(), String> {
+    if OPERATIONS_MANAGER.pause_operation(&operation_id) {
+        Ok(())
+    } else {
+        Err(format!("Operation not found: {}", operation_id))
+    }
+}
+
+/// Возобновление операции
+#[tauri::command]
+pub fn resume_operation(operation_id: String) -> Result<(), String> {
+    if OPERATIONS_MANAGER.resume_operation(&operation_id) {
+        Ok(())
+    } else {
+        Err(format!("Operation not found: {}", operation_id))
+    }
 }

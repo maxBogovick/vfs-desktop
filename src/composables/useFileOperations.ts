@@ -3,6 +3,7 @@ import { useFileSystem } from './useFileSystem';
 import { useClipboard } from './useClipboard';
 import { useNotifications } from './useNotifications';
 import { useFileContentCache } from './useFileContentCache';
+import { useFileOperationsProgress } from './useFileOperationsProgress';
 
 export function useFileOperations(refreshCallback?: () => Promise<void>) {
   const {
@@ -15,6 +16,12 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     openFile: openFileInApp,
     revealInFinder,
   } = useFileSystem();
+
+  const {
+    copyItemsWithProgress,
+    moveItemsWithProgress,
+    deleteItemsWithProgress,
+  } = useFileOperationsProgress();
 
   const {
     hasClipboardItems,
@@ -78,10 +85,9 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
 
     try {
       const currentDir = await getCurrentDirectory(currentPath);
-      await pasteFromClipboard(currentDir, copyItems, moveItems);
+      await pasteFromClipboard(currentDir, copyItemsWithProgress, moveItemsWithProgress);
       // Refresh directory after paste
       await refreshDirectory(currentPath);
-      success('Pasted successfully', 'Items pasted');
     } catch (err) {
       showError('Paste failed', err instanceof Error ? err.message : 'Unknown error');
     }
@@ -101,15 +107,13 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
       `Are you sure you want to permanently delete ${selectedItems.length} item(s)?`,
       async () => {
         try {
-          for (const item of selectedItems) {
-            await deleteItem(item.path);
-            // Инвалидируем кеш для удаленного файла
-            invalidateCache(item.path);
-          }
+          const paths = selectedItems.map(item => item.path);
+          await deleteItemsWithProgress(paths);
+          // Инвалидируем кеш для удаленных файлов
+          selectedItems.forEach(item => invalidateCache(item.path));
           // Refresh directory
           await refreshDirectory(currentPath);
           clearSelection();
-          success('Deleted', `${selectedItems.length} item(s) deleted`);
         } catch (err) {
           showError('Delete failed', err instanceof Error ? err.message : 'Unknown error');
         }

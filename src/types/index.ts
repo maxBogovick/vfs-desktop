@@ -149,3 +149,29 @@ export interface AppConfig {
   bookmarks: Bookmark[];
   ui_state: UIState;
 }
+
+export type OperationType = 'copy' | 'move' | 'delete';
+
+export type OperationStatus = 'running' | 'paused' | 'completed' | 'cancelled' | 'failed';
+
+export interface ProgressEvent {
+  operationId: string;
+  operationType: OperationType;
+  status: OperationStatus;
+  currentBytes: number;
+  totalBytes: number;
+  currentItems: number;
+  totalItems: number;
+  currentFile: string | null;
+  speedBytesPerSec: number;
+  etaSeconds: number | null;
+  errorMessage: string | null;
+}
+
+export interface FileOperation {
+  id: string;
+  type: OperationType;
+  status: OperationStatus;
+  progress: ProgressEvent;
+  startTime: number;
+}

@@ -4,6 +4,8 @@ pub mod core;
 pub mod config;
 mod error;
 mod commands;
+mod progress;
+mod file_operations;
 
 use commands::*;
 
@@ -46,7 +48,14 @@ pub fn run() {
             rename_bookmark,
             // UI State commands
             get_ui_state,
-            save_ui_state
+            save_ui_state,
+            // Progress operations commands
+            copy_items_with_progress_command,
+            move_items_with_progress_command,
+            delete_items_with_progress_command,
+            cancel_operation,
+            pause_operation,
+            resume_operation
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
