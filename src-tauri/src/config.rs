@@ -19,7 +19,7 @@ pub struct Bookmark {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct TabState {
-    pub id: u32,
+    pub id: u64,
     pub path: Vec<String>,
     pub name: String,
 }
@@ -96,7 +96,7 @@ pub struct UIState {
     pub tabs: Vec<TabState>,
 
     #[serde(default)]
-    pub active_tab_id: Option<u32>,
+    pub active_tab_id: Option<u64>,
 
     #[serde(default)]
     pub last_path: Option<Vec<String>>,

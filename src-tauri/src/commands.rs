@@ -1,10 +1,10 @@
-use crate::api::RealFileSystem;
 use crate::api::virtual_fs::VirtualFileSystem;
-use crate::config::{AppConfig, FileSystemBackend, Bookmark, UIState};
+use crate::api::RealFileSystem;
+use crate::config::{AppConfig, Bookmark, FileSystemBackend, UIState};
 use crate::core::{FileSystem, FileSystemEntry};
+use once_cell::sync::Lazy;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use once_cell::sync::Lazy;
 
 // Глобальное состояние конфигурации
 static APP_CONFIG: Lazy<Arc<RwLock<AppConfig>>> = Lazy::new(|| {
@@ -32,9 +32,7 @@ fn get_filesystem() -> FileSystemInstance {
     let config = APP_CONFIG.read().unwrap();
 
     match config.filesystem_backend {
-        FileSystemBackend::Real => {
-            FileSystemInstance::Real(RealFileSystem::new())
-        }
+        FileSystemBackend::Real => FileSystemInstance::Real(RealFileSystem::new()),
         FileSystemBackend::Virtual => {
             let virtual_fs = VirtualFileSystem::new("/Users/maxim/Projects/Rust/vfdir/out/fs.json")
                 .unwrap_or_else(|_| VirtualFileSystem::new("/tmp/vfdir_fs.json").unwrap());
@@ -93,25 +91,33 @@ pub fn delete_item(path: String) -> Result<(), String> {
 #[tauri::command]
 pub fn rename_item(old_path: String, new_name: String) -> Result<(), String> {
     let fs = get_filesystem();
-    fs.as_trait().rename_item(&old_path, &new_name).map_err(|e| e.message)
+    fs.as_trait()
+        .rename_item(&old_path, &new_name)
+        .map_err(|e| e.message)
 }
 
 #[tauri::command]
 pub fn create_folder(path: String, name: String) -> Result<(), String> {
     let fs = get_filesystem();
-    fs.as_trait().create_folder(&path, &name).map_err(|e| e.message)
+    fs.as_trait()
+        .create_folder(&path, &name)
+        .map_err(|e| e.message)
 }
 
 #[tauri::command]
 pub fn copy_items(sources: Vec<String>, destination: String) -> Result<(), String> {
     let fs = get_filesystem();
-    fs.as_trait().copy_items(&sources, &destination).map_err(|e| e.message)
+    fs.as_trait()
+        .copy_items(&sources, &destination)
+        .map_err(|e| e.message)
 }
 
 #[tauri::command]
 pub fn move_items(sources: Vec<String>, destination: String) -> Result<(), String> {
     let fs = get_filesystem();
-    fs.as_trait().move_items(&sources, &destination).map_err(|e| e.message)
+    fs.as_trait()
+        .move_items(&sources, &destination)
+        .map_err(|e| e.message)
 }
 
 #[tauri::command]
@@ -147,7 +153,9 @@ pub fn get_system_folders() -> Result<Vec<FileSystemEntry>, String> {
 #[tauri::command]
 pub fn read_file_content(path: String, max_size: Option<u64>) -> Result<String, String> {
     let fs = get_filesystem();
-    fs.as_trait().read_file_content(&path, max_size).map_err(|e| e.message)
+    fs.as_trait()
+        .read_file_content(&path, max_size)
+        .map_err(|e| e.message)
 }
 
 #[tauri::command]
@@ -159,7 +167,9 @@ pub fn normalize_path(path: String) -> Result<String, String> {
 #[tauri::command]
 pub fn get_path_suggestions(partial_path: String) -> Result<Vec<String>, String> {
     let fs = get_filesystem();
-    fs.as_trait().get_path_suggestions(&partial_path).map_err(|e| e.message)
+    fs.as_trait()
+        .get_path_suggestions(&partial_path)
+        .map_err(|e| e.message)
 }
 
 #[tauri::command]
@@ -237,7 +247,9 @@ pub fn remove_bookmark(id: String) -> Result<(), String> {
 pub fn rename_bookmark(id: String, new_name: String) -> Result<(), String> {
     let mut config = APP_CONFIG.write().unwrap();
 
-    let bookmark = config.bookmarks.iter_mut()
+    let bookmark = config
+        .bookmarks
+        .iter_mut()
         .find(|b| b.id == id)
         .ok_or_else(|| "Bookmark not found".to_string())?;
 
@@ -252,13 +264,40 @@ pub fn rename_bookmark(id: String, new_name: String) -> Result<(), String> {
 #[tauri::command]
 pub fn get_ui_state() -> Result<UIState, String> {
     let config = APP_CONFIG.read().unwrap();
-    Ok(config.ui_state.clone())
+    let ui_state = config.ui_state.clone();
+
+    println!("[get_ui_state] Returning UI state:");
+    println!("  - tabs: {}", ui_state.tabs.len());
+    println!("  - active_tab_id: {:?}", ui_state.active_tab_id);
+    println!("  - last_path: {:?}", ui_state.last_path);
+    println!("  - sidebar_width: {}", ui_state.sidebar_width);
+    println!("  - sidebar expanded_folders: {}", ui_state.sidebar.expanded_folders.len());
+    println!("  - sidebar quick_access: {}", ui_state.sidebar.quick_access_expanded);
+    println!("  - sidebar folder_tree: {}", ui_state.sidebar.folder_tree_expanded);
+    println!("  - sidebar favorites: {}", ui_state.sidebar.favorites_expanded);
+
+    Ok(ui_state)
 }
 
 #[tauri::command]
 pub fn save_ui_state(ui_state: UIState) -> Result<(), String> {
+    println!("[save_ui_state] Received UI state:");
+    println!("  - tabs: {}", ui_state.tabs.len());
+    println!("  - active_tab_id: {:?}", ui_state.active_tab_id);
+    println!("  - last_path: {:?}", ui_state.last_path);
+    println!("  - sidebar_width: {}", ui_state.sidebar_width);
+    println!("  - sidebar expanded_folders: {}", ui_state.sidebar.expanded_folders.len());
+    println!("  - sidebar quick_access: {}", ui_state.sidebar.quick_access_expanded);
+    println!("  - sidebar folder_tree: {}", ui_state.sidebar.folder_tree_expanded);
+    println!("  - sidebar favorites: {}", ui_state.sidebar.favorites_expanded);
+
     let mut config = APP_CONFIG.write().unwrap();
     config.ui_state = ui_state;
+
+    let config_path = crate::config::AppConfig::config_path()?;
+    println!("[save_ui_state] Saving to file: {:?}", config_path);
     config.save()?;
+    println!("[save_ui_state] ✅ Saved successfully to {:?}", config_path);
+
     Ok(())
 }

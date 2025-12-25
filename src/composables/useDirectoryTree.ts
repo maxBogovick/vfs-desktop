@@ -1,7 +1,7 @@
-import { ref, reactive, Ref, computed } from 'vue';
-import type { FileItem } from '../types';
-import { useFileSystem } from './useFileSystem';
-import { useUIState } from './useUIState';
+import {computed, reactive, ref} from 'vue';
+import type {FileItem} from '../types';
+import {useFileSystem} from './useFileSystem';
+import {useUIState} from './useUIState';
 
 export interface TreeNode {
   item: FileItem;
