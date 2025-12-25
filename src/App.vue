@@ -11,6 +11,7 @@ import ConfirmDialog from './components/ConfirmDialog.vue';
 import PropertiesDialog from './components/PropertiesDialog.vue';
 import InputDialog from './components/InputDialog.vue';
 import Settings from './components/Settings.vue';
+import OperationsProgress from './components/OperationsProgress.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useNavigation } from './composables/useNavigation';
@@ -703,6 +704,9 @@ onMounted(async () => {
         v-if="showSettings"
         @close="showSettings = false"
     />
+
+    <!-- File Operations Progress -->
+    <OperationsProgress />
 
     <!-- Status Bar -->
     <div class="h-[20px] bg-[#F1EFE2] border-t border-[#919B9C] px-2 flex items-center text-[11px]">
