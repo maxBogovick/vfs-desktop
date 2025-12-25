@@ -11,6 +11,7 @@ interface Props {
   canGoBack: boolean;
   canGoForward: boolean;
   canGoUp: boolean;
+  isCurrentPathBookmarked?: boolean;
 }
 
 interface Emits {
@@ -25,6 +26,7 @@ interface Emits {
   (e: 'addTab'): void;
   (e: 'update:viewMode', mode: ViewMode): void;
   (e: 'openCommandPalette'): void;
+  (e: 'toggleBookmark'): void;
 }
 
 const props = defineProps<Props>();
@@ -198,6 +200,20 @@ watch(fullPath, () => {
         title="Home"
       >
         🏠
+      </button>
+
+      <div class="w-px h-[24px] bg-[#919B9C]"></div>
+
+      <!-- Bookmark Button -->
+      <button
+        @click="emit('toggleBookmark')"
+        :class="[
+          'w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] flex items-center justify-center transition-all',
+          isCurrentPathBookmarked && 'bg-[#FFE066] from-[#FFE066] to-[#FFD700]'
+        ]"
+        :title="isCurrentPathBookmarked ? 'Remove from Favorites (Ctrl+D)' : 'Add to Favorites (Ctrl+D)'"
+      >
+        {{ isCurrentPathBookmarked ? '⭐' : '☆' }}
       </button>
 
       <div class="w-px h-[24px] bg-[#919B9C]"></div>

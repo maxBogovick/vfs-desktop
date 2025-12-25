@@ -38,7 +38,15 @@ pub fn run() {
             // Config commands
             get_config,
             update_config,
-            set_filesystem_backend
+            set_filesystem_backend,
+            // Bookmark commands
+            get_bookmarks,
+            add_bookmark,
+            remove_bookmark,
+            rename_bookmark,
+            // UI State commands
+            get_ui_state,
+            save_ui_state
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

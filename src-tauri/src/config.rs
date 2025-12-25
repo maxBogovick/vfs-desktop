@@ -9,6 +9,127 @@ pub enum FileSystemBackend {
     Virtual,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Bookmark {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+    pub created_at: u64, // Unix timestamp
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct TabState {
+    pub id: u32,
+    pub path: Vec<String>,
+    pub name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindowState {
+    #[serde(default)]
+    pub width: Option<f64>,
+
+    #[serde(default)]
+    pub height: Option<f64>,
+
+    #[serde(default)]
+    pub x: Option<f64>,
+
+    #[serde(default)]
+    pub y: Option<f64>,
+
+    #[serde(default)]
+    pub maximized: bool,
+}
+
+impl Default for WindowState {
+    fn default() -> Self {
+        Self {
+            width: None,
+            height: None,
+            x: None,
+            y: None,
+            maximized: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SidebarState {
+    #[serde(default)]
+    pub expanded_folders: Vec<String>,
+
+    #[serde(default = "default_true")]
+    pub quick_access_expanded: bool,
+
+    #[serde(default = "default_true")]
+    pub folder_tree_expanded: bool,
+
+    #[serde(default)]
+    pub favorites_expanded: bool,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for SidebarState {
+    fn default() -> Self {
+        Self {
+            expanded_folders: vec![],
+            quick_access_expanded: true,
+            folder_tree_expanded: true,
+            favorites_expanded: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UIState {
+    #[serde(default = "default_sidebar_width")]
+    pub sidebar_width: u32,
+
+    #[serde(default = "default_preview_width")]
+    pub preview_width: u32,
+
+    #[serde(default)]
+    pub tabs: Vec<TabState>,
+
+    #[serde(default)]
+    pub active_tab_id: Option<u32>,
+
+    #[serde(default)]
+    pub last_path: Option<Vec<String>>,
+
+    #[serde(default)]
+    pub window: WindowState,
+
+    #[serde(default)]
+    pub sidebar: SidebarState,
+}
+
+fn default_sidebar_width() -> u32 {
+    240
+}
+
+fn default_preview_width() -> u32 {
+    300
+}
+
+impl Default for UIState {
+    fn default() -> Self {
+        Self {
+            sidebar_width: default_sidebar_width(),
+            preview_width: default_preview_width(),
+            tabs: vec![],
+            active_tab_id: None,
+            last_path: None,
+            window: WindowState::default(),
+            sidebar: SidebarState::default(),
+        }
+    }
+}
+
 impl Default for FileSystemBackend {
     fn default() -> Self {
         FileSystemBackend::Real
@@ -28,6 +149,12 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub theme: String,
+
+    #[serde(default)]
+    pub bookmarks: Vec<Bookmark>,
+
+    #[serde(default)]
+    pub ui_state: UIState,
 }
 
 fn default_show_hidden() -> bool {
@@ -45,6 +172,8 @@ impl Default for AppConfig {
             show_hidden_files: false,
             default_view_mode: "grid".to_string(),
             theme: "luna".to_string(),
+            bookmarks: Vec::new(),
+            ui_state: UIState::default(),
         }
     }
 }
@@ -120,6 +249,8 @@ mod tests {
             show_hidden_files: true,
             default_view_mode: "list".to_string(),
             theme: "dark".to_string(),
+            bookmarks: vec![],
+            ui_state: Default::default(),
         };
 
         let json = serde_json::to_string(&config).unwrap();

@@ -5,14 +5,19 @@ import { useFileContentCache } from '../composables/useFileContentCache';
 
 interface Props {
   file: FileItem | null;
+  width?: number;
 }
 
 interface Emits {
   (e: 'close'): void;
   (e: 'open', file: FileItem): void;
+  (e: 'resize', width: number): void;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  width: 300,
+});
+
 const emit = defineEmits<Emits>();
 
 const { getFileContent } = useFileContentCache();
@@ -20,6 +25,38 @@ const { getFileContent } = useFileContentCache();
 const fileContent = ref<string | null>(null);
 const isLoadingContent = ref(false);
 const contentError = ref<string | null>(null);
+
+// Resizer state
+const isResizing = ref(false);
+const startX = ref(0);
+const startWidth = ref(0);
+
+const handleResizeStart = (event: MouseEvent) => {
+  isResizing.value = true;
+  startX.value = event.clientX;
+  startWidth.value = props.width;
+
+  document.addEventListener('mousemove', handleResizeMove);
+  document.addEventListener('mouseup', handleResizeEnd);
+
+  event.preventDefault();
+};
+
+const handleResizeMove = (event: MouseEvent) => {
+  if (!isResizing.value) return;
+
+  const delta = startX.value - event.clientX;
+  const newWidth = Math.max(250, Math.min(600, startWidth.value + delta));
+
+  emit('resize', newWidth);
+};
+
+const handleResizeEnd = () => {
+  isResizing.value = false;
+
+  document.removeEventListener('mousemove', handleResizeMove);
+  document.removeEventListener('mouseup', handleResizeEnd);
+};
 
 // Функция очистки контента для освобождения памяти
 const cleanupContent = () => {
@@ -105,8 +142,15 @@ watch(() => props.file, async (newFile, oldFile) => {
   <transition name="slide-right">
     <div
       v-if="file"
-      class="w-72 bg-gradient-to-b from-[#C1D9F4] to-[#A5C8E1] border-l border-[#919B9C] flex flex-col overflow-hidden"
+      class="bg-gradient-to-b from-[#C1D9F4] to-[#A5C8E1] border-l border-[#919B9C] flex flex-col overflow-hidden relative"
+      :style="{ width: `${width}px` }"
     >
+      <!-- Resizer Handle -->
+      <div
+        @mousedown="handleResizeStart"
+        class="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-blue-400 transition-colors z-10"
+        :class="{ 'bg-blue-500': isResizing }"
+      ></div>
       <!-- Header -->
       <div class="flex justify-between items-center p-3 border-b border-[#8BA5C7]">
         <div class="text-[12px] font-bold text-[#003D7A]">File Preview</div>

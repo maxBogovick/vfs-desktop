@@ -14,6 +14,7 @@ interface Emits {
   (e: 'paste'): void;
   (e: 'rename'): void;
   (e: 'delete'): void;
+  (e: 'addToFavorites'): void;
   (e: 'openTerminal'): void;
   (e: 'properties'): void;
   (e: 'close'): void;
@@ -98,6 +99,17 @@ const handleAction = (action: keyof Emits) => {
     </div>
 
     <div class="border-t border-[#D0D0BF] my-1"></div>
+
+    <!-- Add to Favorites (only for folders) -->
+    <div
+      v-if="item && item.type === 'folder'"
+      @click="handleAction('addToFavorites')"
+      class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+    >
+      <span class="w-4">⭐</span>
+      <span class="flex-1">Add to Favorites</span>
+      <span class="text-[9px] text-gray-400">Ctrl+D</span>
+    </div>
 
     <!-- Open in Terminal -->
     <div

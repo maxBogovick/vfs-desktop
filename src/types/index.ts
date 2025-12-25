@@ -103,9 +103,49 @@ export interface FileSystemEntry {
 
 export type FileSystemBackend = 'real' | 'virtual';
 
+export interface Bookmark {
+  id: string;
+  name: string;
+  path: string;
+  created_at: number;
+}
+
+export interface WindowState {
+  width?: number;
+  height?: number;
+  x?: number;
+  y?: number;
+  maximized: boolean;
+}
+
+export interface SidebarState {
+  expanded_folders: string[];
+  quick_access_expanded: boolean;
+  folder_tree_expanded: boolean;
+  favorites_expanded: boolean;
+}
+
+export interface TabState {
+  id: number;
+  path: string[];
+  name: string;
+}
+
+export interface UIState {
+  sidebar_width: number;
+  preview_width: number;
+  tabs: TabState[];
+  active_tab_id?: number;
+  last_path?: string[];
+  window: WindowState;
+  sidebar: SidebarState;
+}
+
 export interface AppConfig {
   filesystem_backend: FileSystemBackend;
   show_hidden_files: boolean;
   default_view_mode: ViewMode;
   theme: string;
+  bookmarks: Bookmark[];
+  ui_state: UIState;
 }

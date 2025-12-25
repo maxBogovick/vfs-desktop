@@ -1,8 +1,9 @@
 use crate::api::RealFileSystem;
 use crate::api::virtual_fs::VirtualFileSystem;
-use crate::config::{AppConfig, FileSystemBackend};
+use crate::config::{AppConfig, FileSystemBackend, Bookmark, UIState};
 use crate::core::{FileSystem, FileSystemEntry};
 use std::sync::{Arc, RwLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 use once_cell::sync::Lazy;
 
 // Глобальное состояние конфигурации
@@ -165,4 +166,99 @@ pub fn get_path_suggestions(partial_path: String) -> Result<Vec<String>, String>
 pub fn open_terminal(path: String) -> Result<(), String> {
     let fs = get_filesystem();
     fs.as_trait().open_terminal(&path).map_err(|e| e.message)
+}
+
+// ====== Команды для работы с закладками ======
+
+#[tauri::command]
+pub fn get_bookmarks() -> Result<Vec<Bookmark>, String> {
+    let config = APP_CONFIG.read().unwrap();
+    Ok(config.bookmarks.clone())
+}
+
+#[tauri::command]
+pub fn add_bookmark(path: String, name: Option<String>) -> Result<Bookmark, String> {
+    let mut config = APP_CONFIG.write().unwrap();
+
+    // Проверить, не существует ли уже закладка с таким путем
+    if config.bookmarks.iter().any(|b| b.path == path) {
+        return Err("Bookmark with this path already exists".to_string());
+    }
+
+    // Создать имя из пути, если не указано
+    let bookmark_name = name.unwrap_or_else(|| {
+        std::path::Path::new(&path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Bookmark")
+            .to_string()
+    });
+
+    // Получить текущее время
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+
+    // Создать уникальный ID
+    let id = format!("bookmark_{}", timestamp);
+
+    let bookmark = Bookmark {
+        id: id.clone(),
+        name: bookmark_name,
+        path: path.clone(),
+        created_at: timestamp,
+    };
+
+    config.bookmarks.push(bookmark.clone());
+
+    // Сохранить конфигурацию
+    config.save()?;
+
+    Ok(bookmark)
+}
+
+#[tauri::command]
+pub fn remove_bookmark(id: String) -> Result<(), String> {
+    let mut config = APP_CONFIG.write().unwrap();
+
+    let initial_len = config.bookmarks.len();
+    config.bookmarks.retain(|b| b.id != id);
+
+    if config.bookmarks.len() == initial_len {
+        return Err("Bookmark not found".to_string());
+    }
+
+    config.save()?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn rename_bookmark(id: String, new_name: String) -> Result<(), String> {
+    let mut config = APP_CONFIG.write().unwrap();
+
+    let bookmark = config.bookmarks.iter_mut()
+        .find(|b| b.id == id)
+        .ok_or_else(|| "Bookmark not found".to_string())?;
+
+    bookmark.name = new_name;
+
+    config.save()?;
+    Ok(())
+}
+
+// ====== Команды для работы с UI состоянием ======
+
+#[tauri::command]
+pub fn get_ui_state() -> Result<UIState, String> {
+    let config = APP_CONFIG.read().unwrap();
+    Ok(config.ui_state.clone())
+}
+
+#[tauri::command]
+pub fn save_ui_state(ui_state: UIState) -> Result<(), String> {
+    let mut config = APP_CONFIG.write().unwrap();
+    config.ui_state = ui_state;
+    config.save()?;
+    Ok(())
 }

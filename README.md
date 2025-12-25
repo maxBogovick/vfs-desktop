@@ -111,7 +111,7 @@ const { searchQuery, processFiles, addFileTypeFilter, setSorting } = useSearch()
 const { startDrag, handleDrop, isDragTarget } = useDragDrop();
 ```
 
-См. [ARCHITECTURE.md](./ARCHITECTURE.md) для подробной документации.
+См. [ARCHITECTURE.md](out/ARCHITECTURE.md) для подробной документации.
 
 ## 🔌 Tauri Integration
 
@@ -157,7 +157,7 @@ npm run tauri build
 
 ## 📖 Документация
 
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - Архитектура проекта
+- [ARCHITECTURE.md](out/ARCHITECTURE.md) - Архитектура проекта
 - [Vue 3 Docs](https://vuejs.org/)
 - [Tauri Docs](https://tauri.app/)
 - [Tailwind CSS](https://tailwindcss.com/)

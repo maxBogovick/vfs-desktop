@@ -18,6 +18,8 @@ interface Emits {
   (e: 'dragStart', item: FileItem, event: DragEvent): void;
   (e: 'dragOver', item: FileItem, event: DragEvent): void;
   (e: 'dragLeave', item: FileItem): void;
+  (e: 'dragEnd'): void;
+  (e: 'dropOnBackground', event: DragEvent): void;
   (e: 'drop', item: FileItem, event: DragEvent): void;
   (e: 'toggleSelection', item: FileItem): void;
   (e: 'copyItem', item: FileItem): void;
@@ -81,9 +83,11 @@ const isFocused = (itemId: string) => {
 </script>
 
 <template>
-  <div class="flex-1 p-4 overflow-y-auto bg-white">
+  <div class="flex-1 p-4 overflow-y-auto bg-white min-h-full relative"
+    @dragover="emit('dragOverBackground', $event)"
+    @drop.stop="emit('dropOnBackground', $event)">
     <!-- Loading State -->
-    <div v-if="isLoading" class="flex items-center justify-center h-full">
+    <div v-if="isLoading" class="flex items-center justify-center h-full pointer-events-none">
       <div class="text-center">
         <div class="text-4xl mb-2">⏳</div>
         <div class="text-sm text-gray-500">Loading...</div>
@@ -99,15 +103,16 @@ const isFocused = (itemId: string) => {
     </div>
 
     <!-- Grid View -->
-    <div v-else-if="viewMode === 'grid'" class="grid grid-cols-4 gap-4">
+    <div v-else-if="viewMode === 'grid'" class="grid grid-cols-4 gap-4 pb-20">
       <div
         v-for="item in items"
         :key="item.id"
         :draggable="true"
         @dragstart="emit('dragStart', item, $event)"
-        @dragover="emit('dragOver', item, $event)"
+        @dragend="emit('dragEnd')"
+        @dragover.prevent="emit('dragOver', item, $event)"
         @dragleave="emit('dragLeave', item)"
-        @drop="emit('drop', item, $event)"
+        @drop.stop="emit('drop', item, $event)"
         @click="emit('itemClick', item, $event)"
         @dblclick="emit('itemDoubleClick', item)"
         @contextmenu="emit('itemContextMenu', item, $event)"
@@ -211,11 +216,12 @@ const isFocused = (itemId: string) => {
       <div
         v-for="item in items"
         :key="item.id"
-        :draggable="true"
+        draggable="true"
         @dragstart="emit('dragStart', item, $event)"
-        @dragover="emit('dragOver', item, $event)"
+        @dragend="emit('dragEnd')"
+        @dragover.stop="emit('dragOver', item, $event)"
         @dragleave="emit('dragLeave', item)"
-        @drop="emit('drop', item, $event)"
+        @drop.stop="emit('drop', item, $event)"
         @click="emit('itemClick', item, $event)"
         @dblclick="emit('itemDoubleClick', item)"
         @contextmenu="emit('itemContextMenu', item, $event)"

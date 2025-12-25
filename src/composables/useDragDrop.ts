@@ -1,18 +1,23 @@
 import { ref, computed } from 'vue';
 import type { FileItem } from '../types';
 
+// GLOBAL STATE - создаём один раз и переиспользуем
+const isDragging = ref(false);
+const draggedItems = ref<FileItem[]>([]);
+const dropTarget = ref<FileItem | null>(null);
+const dragOverId = ref<string | null>(null);
+
 export function useDragDrop() {
-  const isDragging = ref(false);
-  const draggedItems = ref<FileItem[]>([]);
-  const dropTarget = ref<FileItem | null>(null);
-  const dragOverId = ref<string | null>(null);
+  // Используем глобальное состояние вместо создания нового
 
   const hasDraggedItems = computed(() => draggedItems.value.length > 0);
 
   // Start dragging
   const startDrag = (items: FileItem[], event: DragEvent) => {
+    console.log('[useDragDrop] startDrag called with', items.length, 'items');
     isDragging.value = true;
     draggedItems.value = items;
+    console.log('[useDragDrop] State updated:', { isDragging: isDragging.value, count: draggedItems.value.length });
 
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'copyMove';
@@ -22,19 +27,39 @@ export function useDragDrop() {
 
   // Handle drag over
   const handleDragOver = (item: FileItem | null, event: DragEvent) => {
-    event.preventDefault();
+    event.preventDefault(); // Обязательно
+    // event.stopPropagation(); // Можно добавить, чтобы не всплывало к фону
 
-    // Only allow drop on folders
     if (item && item.type === 'folder') {
       dropTarget.value = item;
       dragOverId.value = item.id;
-
       if (event.dataTransfer) {
         event.dataTransfer.dropEffect = event.ctrlKey || event.metaKey ? 'copy' : 'move';
       }
     } else {
+      // Если навели на файл (не папку), сброс "внутрь" запрещен,
+      // но мы должны очистить подсветку
       dropTarget.value = null;
       dragOverId.value = null;
+      // Важно: здесь мы НЕ запрещаем dropEffect, чтобы событие могло всплыть к контейнеру,
+      // либо можно установить 'none', если хотим запретить сброс НА файл.
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'none';
+      }
+    }
+  };
+
+  // 2. Добавляем специальный handler для фона (пустого места)
+  const handleDragOverBackground = (event: DragEvent) => {
+    event.preventDefault(); // Обязательно! Без этого drop не сработает
+
+    // Сбрасываем подсветку конкретных папок, так как мы на фоне
+    dropTarget.value = null;
+    dragOverId.value = null;
+
+    if (event.dataTransfer) {
+      // ЯВНО разрешаем сброс
+      event.dataTransfer.dropEffect = event.ctrlKey || event.metaKey ? 'copy' : 'move';
     }
   };
 
@@ -79,6 +104,7 @@ export function useDragDrop() {
 
   // End dragging
   const endDrag = () => {
+    console.log('[useDragDrop] endDrag called');
     isDragging.value = false;
     draggedItems.value = [];
     dropTarget.value = null;
@@ -103,6 +129,7 @@ export function useDragDrop() {
     hasDraggedItems,
     startDrag,
     handleDragOver,
+    handleDragOverBackground,
     handleDragLeave,
     handleDrop,
     endDrag,

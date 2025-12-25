@@ -1,6 +1,7 @@
-import { ref, reactive } from 'vue';
+import { ref, reactive, Ref, computed } from 'vue';
 import type { FileItem } from '../types';
 import { useFileSystem } from './useFileSystem';
+import { useUIState } from './useUIState';
 
 export interface TreeNode {
   item: FileItem;
@@ -13,8 +14,11 @@ export interface TreeNode {
 
 export function useDirectoryTree() {
   const { getDirectoryContents } = useFileSystem();
+  const { expandedFolders, toggleFolderExpansion } = useUIState();
   const rootNodes = ref<TreeNode[]>([]);
-  const expandedPaths = ref<Set<string>>(new Set());
+
+  // Convert expandedFolders array to Set for faster lookup
+  const expandedPaths = computed(() => new Set(expandedFolders.value));
 
   // Check if item is a folder that can have children
   const canHaveChildren = (item: FileItem): boolean => {
@@ -78,11 +82,8 @@ export function useDirectoryTree() {
 
     node.isExpanded = !node.isExpanded;
 
-    if (node.isExpanded) {
-      expandedPaths.value.add(node.item.path);
-    } else {
-      expandedPaths.value.delete(node.item.path);
-    }
+    // Update global state
+    toggleFolderExpansion(node.item.path);
 
     console.log('[toggleNode] Node now expanded:', node.isExpanded, 'children:', node.children.length);
   };
