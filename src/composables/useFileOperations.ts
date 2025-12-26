@@ -8,11 +8,8 @@ import { useFileOperationsProgress } from './useFileOperationsProgress';
 export function useFileOperations(refreshCallback?: () => Promise<void>) {
   const {
     loadDirectory,
-    deleteItem,
     renameItem,
     createFolder,
-    copyItems,
-    moveItems,
     openFile: openFileInApp,
     revealInFinder,
   } = useFileSystem();

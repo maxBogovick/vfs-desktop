@@ -25,6 +25,7 @@ import { useCommands } from './composables/useCommands';
 import { useNotifications } from './composables/useNotifications';
 import { useBookmarks } from './composables/useBookmarks';
 import { useUIState } from './composables/useUIState';
+import { useSwipeNavigation } from './composables/useSwipeNavigation';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type { FileItem, ViewMode } from './types';
@@ -429,6 +430,14 @@ const shortcuts = createKeyboardShortcuts(
 );
 
 useKeyboard(shortcuts);
+
+// Swipe navigation (two-finger swipe on trackpad)
+useSwipeNavigation({
+  onSwipeLeft: goBack,
+  onSwipeRight: goForward,
+  canSwipeLeft: () => canGoBack.value,
+  canSwipeRight: () => canGoForward.value,
+});
 
 // Context menu handlers
 const contextMenuHandlers = {

@@ -1,8 +1,8 @@
-import { ref, computed } from 'vue';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
-import type { FileOperation, ProgressEvent, OperationType } from '../types';
-import { useNotifications } from './useNotifications';
+import {computed, ref} from 'vue';
+import {invoke} from '@tauri-apps/api/core';
+import {listen} from '@tauri-apps/api/event';
+import type {FileOperation, ProgressEvent} from '../types';
+import {useNotifications} from './useNotifications';
 
 const operations = ref<Map<string, FileOperation>>(new Map());
 let progressUnlisten: (() => void) | null = null;
