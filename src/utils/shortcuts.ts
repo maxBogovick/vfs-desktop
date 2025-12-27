@@ -25,13 +25,15 @@ interface ShortcutHandlers {
   selectFocused: () => void;
   toggleFocusedSelection: () => void;
   openFocusedItem: () => void;
+  // Dual panel
+  switchPanels?: () => void;
 }
 
 export function createKeyboardShortcuts(
   handlers: ShortcutHandlers,
   files: () => FileItem[]
 ): KeyboardShortcut[] {
-  return [
+  const shortcuts: KeyboardShortcut[] = [
     {
       key: 'k',
       ctrl: true,
@@ -150,4 +152,15 @@ export function createKeyboardShortcuts(
       callback: handlers.openFocusedItem,
     },
   ];
+
+  // Add Tab shortcut for dual panel mode if handler is provided
+  if (handlers.switchPanels) {
+    shortcuts.push({
+      key: 'Tab',
+      description: 'Switch panels (dual mode)',
+      callback: handlers.switchPanels,
+    });
+  }
+
+  return shortcuts;
 }

@@ -9,7 +9,7 @@ fn main() {
 }
 
 fn run() {
-    Scan::dir("../")
+    Scan::dir("../src")
         .allow_only(vec!("**/*.rs", "**/*.ts", "**/*.vue"))
         .run().unwrap();
 }

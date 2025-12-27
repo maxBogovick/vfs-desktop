@@ -24,6 +24,71 @@ pub struct TabState {
     pub name: String,
 }
 
+// Режим отображения панелей
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum PanelMode {
+    Single,
+    Dual,
+}
+
+impl Default for PanelMode {
+    fn default() -> Self {
+        PanelMode::Single
+    }
+}
+
+// Состояние одной панели
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PanelState {
+    pub tabs: Vec<TabState>,
+    pub active_tab_id: Option<u64>,
+}
+
+impl Default for PanelState {
+    fn default() -> Self {
+        Self {
+            tabs: vec![],
+            active_tab_id: None,
+        }
+    }
+}
+
+// Конфигурация dual-panel
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DualPanelConfig {
+    #[serde(default = "default_panel_split")]
+    pub left_panel_width_percent: u32,
+
+    #[serde(default)]
+    pub left_panel: PanelState,
+
+    #[serde(default)]
+    pub right_panel: PanelState,
+
+    #[serde(default = "default_active_panel")]
+    pub active_panel: String,
+}
+
+fn default_panel_split() -> u32 {
+    50
+}
+
+fn default_active_panel() -> String {
+    "left".to_string()
+}
+
+impl Default for DualPanelConfig {
+    fn default() -> Self {
+        Self {
+            left_panel_width_percent: 50,
+            left_panel: PanelState::default(),
+            right_panel: PanelState::default(),
+            active_panel: "left".to_string(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WindowState {
     #[serde(default)]
@@ -92,6 +157,7 @@ pub struct UIState {
     #[serde(default = "default_preview_width")]
     pub preview_width: u32,
 
+    // Single-mode state
     #[serde(default)]
     pub tabs: Vec<TabState>,
 
@@ -100,6 +166,13 @@ pub struct UIState {
 
     #[serde(default)]
     pub last_path: Option<Vec<String>>,
+
+    // Dual-panel state
+    #[serde(default)]
+    pub panel_mode: PanelMode,
+
+    #[serde(default)]
+    pub dual_panel_config: DualPanelConfig,
 
     #[serde(default)]
     pub window: WindowState,
@@ -124,6 +197,8 @@ impl Default for UIState {
             tabs: vec![],
             active_tab_id: None,
             last_path: None,
+            panel_mode: PanelMode::default(),
+            dual_panel_config: DualPanelConfig::default(),
             window: WindowState::default(),
             sidebar: SidebarState::default(),
         }

@@ -1,22 +1,43 @@
 import { ref } from 'vue';
 import type { FileItem } from '../types';
 
-export function useDialogs() {
-  // Confirm Dialog
-  const confirmDialog = ref<{
-    isOpen: boolean;
-    title: string;
-    message: string;
-    type: 'warning' | 'danger' | 'info';
-    onConfirm: () => void;
-  }>({
-    isOpen: false,
-    title: '',
-    message: '',
-    type: 'warning',
-    onConfirm: () => {},
-  });
+// Module-level shared state (singleton)
+const confirmDialog = ref<{
+  isOpen: boolean;
+  title: string;
+  message: string;
+  type: 'warning' | 'danger' | 'info';
+  onConfirm: () => void;
+}>({
+  isOpen: false,
+  title: '',
+  message: '',
+  type: 'warning',
+  onConfirm: () => {},
+});
 
+const propertiesDialog = ref<{ isOpen: boolean; file: FileItem | null }>({
+  isOpen: false,
+  file: null,
+});
+
+const inputDialog = ref<{
+  isOpen: boolean;
+  title: string;
+  label: string;
+  defaultValue: string;
+  placeholder: string;
+  onConfirm: (value: string) => void;
+}>({
+  isOpen: false,
+  title: '',
+  label: '',
+  defaultValue: '',
+  placeholder: '',
+  onConfirm: () => {},
+});
+
+export function useDialogs() {
   const showConfirm = (
     title: string,
     message: string,
@@ -36,12 +57,6 @@ export function useDialogs() {
     confirmDialog.value.isOpen = false;
   };
 
-  // Properties Dialog
-  const propertiesDialog = ref<{ isOpen: boolean; file: FileItem | null }>({
-    isOpen: false,
-    file: null,
-  });
-
   const showProperties = (file: FileItem) => {
     propertiesDialog.value = {
       isOpen: true,
@@ -52,23 +67,6 @@ export function useDialogs() {
   const closeProperties = () => {
     propertiesDialog.value.isOpen = false;
   };
-
-  // Input Dialog
-  const inputDialog = ref<{
-    isOpen: boolean;
-    title: string;
-    label: string;
-    defaultValue: string;
-    placeholder: string;
-    onConfirm: (value: string) => void;
-  }>({
-    isOpen: false,
-    title: '',
-    label: '',
-    defaultValue: '',
-    placeholder: '',
-    onConfirm: () => {},
-  });
 
   const showInput = (
     title: string,

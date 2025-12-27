@@ -131,12 +131,29 @@ export interface TabState {
   name: string;
 }
 
+export type PanelMode = 'single' | 'dual';
+export type ActivePanel = 'left' | 'right';
+
+export interface PanelState {
+  tabs: TabState[];
+  active_tab_id?: number;
+}
+
+export interface DualPanelConfig {
+  left_panel_width_percent: number;
+  left_panel: PanelState;
+  right_panel: PanelState;
+  active_panel: ActivePanel;
+}
+
 export interface UIState {
   sidebar_width: number;
   preview_width: number;
   tabs: TabState[];
   active_tab_id?: number;
   last_path?: string[];
+  panel_mode: PanelMode;
+  dual_panel_config: DualPanelConfig;
   window: WindowState;
   sidebar: SidebarState;
 }

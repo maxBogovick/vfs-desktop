@@ -12,6 +12,7 @@ import PropertiesDialog from './components/PropertiesDialog.vue';
 import InputDialog from './components/InputDialog.vue';
 import Settings from './components/Settings.vue';
 import OperationsProgress from './components/OperationsProgress.vue';
+import DualPanelContainer from './components/DualPanelContainer.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useNavigation } from './composables/useNavigation';
@@ -26,6 +27,8 @@ import { useNotifications } from './composables/useNotifications';
 import { useBookmarks } from './composables/useBookmarks';
 import { useUIState } from './composables/useUIState';
 import { useSwipeNavigation } from './composables/useSwipeNavigation';
+import { useDualPanel, getActivePanelMethods } from './composables/useDualPanel';
+import { useContextMenu } from './composables/useContextMenu';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type { FileItem, ViewMode } from './types';
@@ -123,6 +126,25 @@ const {
   loadUIState,
 } = useUIState();
 
+// Dual Panel
+const {
+  panelMode,
+  isDualMode,
+  activePanelPath,
+  activePanelTabs,
+  activePanelTabId,
+  leftPanelWidthPercent,
+  activePanel,
+  leftPanelTabs,
+  leftPanelActiveTabId,
+  rightPanelTabs,
+  rightPanelActiveTabId,
+  togglePanelMode,
+  switchActivePanel,
+  loadDualPanelState,
+  serializeDualPanelState,
+} = useDualPanel();
+
 // Handle sidebar resize - напрямую обновляем ref, watch в App.vue сам сохранит
 const handleSidebarResize = (width: number) => {
   sidebarWidth.value = width;
@@ -176,10 +198,12 @@ const refreshCurrentDirectory = async () => {
 // File Operations
 const fileOps = useFileOperations(refreshCurrentDirectory);
 
+// Context Menu (global)
+const { contextMenu, showContextMenu, closeContextMenu } = useContextMenu();
+
 // Local state
 const viewMode = ref<ViewMode>('list');
 const isCommandPaletteOpen = ref(false);
-const contextMenu = ref<{ x: number; y: number; item: FileItem } | null>(null);
 const previewFile = ref<FileItem | null>(null);
 const showSettings = ref(false);
 
@@ -206,12 +230,7 @@ const handleItemDoubleClick = (item: FileItem) => {
 };
 
 const handleContextMenu = (item: FileItem, event: MouseEvent) => {
-  event.preventDefault();
-  contextMenu.value = { x: event.clientX, y: event.clientY, item };
-};
-
-const closeContextMenu = () => {
-  contextMenu.value = null;
+  showContextMenu(item, event);
 };
 
 // ИСПРАВЛЕНИЕ: Обновленная функция handleDragStart
@@ -326,6 +345,103 @@ const handleOpenTerminal = async (item: FileItem) => {
   }
 };
 
+// Navigation handlers for toolbar (work in both single and dual modes)
+const handleGoBack = () => {
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    if (methods) methods.goBack();
+  } else {
+    goBack();
+  }
+};
+
+const handleGoForward = () => {
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    if (methods) methods.goForward();
+  } else {
+    goForward();
+  }
+};
+
+const handleGoUp = () => {
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    if (methods) methods.goUp();
+  } else {
+    goUp();
+  }
+};
+
+const handleAddTab = () => {
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    if (methods) methods.addTab();
+  } else {
+    addTab();
+  }
+};
+
+const handleGoHome = async () => {
+  if (isDualMode.value) {
+    // In dual mode, navigate active panel to home
+    const homeDir = await getHomeDirectory();
+    const pathParts = homeDir.replace(/^\//, '').split('/').filter(p => p);
+
+    if (activePanel.value === 'left') {
+      const activeTab = leftPanelTabs.value.find(t => t.id === leftPanelActiveTabId.value);
+      if (activeTab) {
+        const tabIndex = leftPanelTabs.value.findIndex(t => t.id === leftPanelActiveTabId.value);
+        const updatedTabs = [...leftPanelTabs.value];
+        const newHistory = activeTab.history.slice(0, activeTab.historyIndex + 1);
+        newHistory.push(pathParts);
+        updatedTabs[tabIndex] = {
+          ...activeTab,
+          path: pathParts,
+          name: 'Home',
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
+        };
+        leftPanelTabs.value = updatedTabs;
+      }
+    } else {
+      const activeTab = rightPanelTabs.value.find(t => t.id === rightPanelActiveTabId.value);
+      if (activeTab) {
+        const tabIndex = rightPanelTabs.value.findIndex(t => t.id === rightPanelActiveTabId.value);
+        const updatedTabs = [...rightPanelTabs.value];
+        const newHistory = activeTab.history.slice(0, activeTab.historyIndex + 1);
+        newHistory.push(pathParts);
+        updatedTabs[tabIndex] = {
+          ...activeTab,
+          path: pathParts,
+          name: 'Home',
+          history: newHistory,
+          historyIndex: newHistory.length - 1,
+        };
+        rightPanelTabs.value = updatedTabs;
+      }
+    }
+  } else {
+    goHome();
+  }
+};
+
+const canGoBackComputed = computed(() => {
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    return methods ? methods.canGoBack() : false;
+  }
+  return canGoBack.value;
+});
+
+const canGoForwardComputed = computed(() => {
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    return methods ? methods.canGoForward() : false;
+  }
+  return canGoForward.value;
+});
+
 // Handle navigation to path from address bar
 const handleNavigateToPath = async (path: string) => {
   try {
@@ -384,73 +500,269 @@ const executeCommand = (cmd: { id: string }) => {
   }
 };
 
-// Keyboard shortcuts
+// Keyboard shortcuts (work in both single and dual modes)
 const shortcuts = createKeyboardShortcuts(
     {
       openCommandPalette: () => { isCommandPaletteOpen.value = true; },
       closeDialogs: () => {
         isCommandPaletteOpen.value = false;
         previewFile.value = null;
-        clearSelection();
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.clearSelection();
+        } else {
+          clearSelection();
+        }
       },
-      selectAll: (files: FileItem[]) => selectAll(files),
-      addTab,
+      selectAll: (files: FileItem[]) => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.selectAll();
+        } else {
+          selectAll(files);
+        }
+      },
+      addTab: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.addTab();
+        } else {
+          addTab();
+        }
+      },
       closeTab: (canClose: boolean) => {
-        if (canClose && tabs.value.length > 1) {
-          closeTab(activeTabId.value);
+        if (canClose) {
+          if (isDualMode.value) {
+            const methods = getActivePanelMethods();
+            if (methods) methods.closeTab();
+          } else if (tabs.value.length > 1) {
+            closeTab(activeTabId.value);
+          }
         }
       },
       goUp: (canGoUpValue: boolean) => {
-        if (canGoUpValue) goUp();
+        if (canGoUpValue) {
+          if (isDualMode.value) {
+            const methods = getActivePanelMethods();
+            if (methods) methods.goUp();
+          } else {
+            goUp();
+          }
+        }
       },
-      handleCopy: () => fileOps.handleCopy(getSelected()),
-      handleCut: () => fileOps.handleCut(getSelected()),
-      handlePaste: () => fileOps.handlePaste(currentPath.value),
-      handleDelete: () => fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm),
-      handleRename: () => fileOps.handleRename(getSelected(), currentPath.value, showInput),
-      handleRefresh: () => fileOps.handleRefresh(currentPath.value),
-      handleNewFolder: () => fileOps.handleNewFolder(currentPath.value, showInput),
+      handleCopy: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.handleCopy();
+        } else {
+          fileOps.handleCopy(getSelected());
+        }
+      },
+      handleCut: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.handleCut();
+        } else {
+          fileOps.handleCut(getSelected());
+        }
+      },
+      handlePaste: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.handlePaste();
+        } else {
+          fileOps.handlePaste(currentPath.value);
+        }
+      },
+      handleDelete: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.handleDelete();
+        } else {
+          fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm);
+        }
+      },
+      handleRename: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.handleRename();
+        } else {
+          fileOps.handleRename(getSelected(), currentPath.value, showInput);
+        }
+      },
+      handleRefresh: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.handleRefresh();
+        } else {
+          fileOps.handleRefresh(currentPath.value);
+        }
+      },
+      handleNewFolder: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.handleNewFolder();
+        } else {
+          fileOps.handleNewFolder(currentPath.value, showInput);
+        }
+      },
       toggleBookmark: handleToggleBookmark,
       openSettings: () => { showSettings.value = true; },
+      // Dual panel switch (Tab)
+      switchPanels: isDualMode.value ? () => {
+        switchActivePanel(activePanel.value === 'left' ? 'right' : 'left');
+      } : undefined,
       // Keyboard navigation
-      moveFocusUp: () => moveFocusUp(processedFiles.value),
-      moveFocusDown: () => moveFocusDown(processedFiles.value),
-      moveFocusToFirst: () => moveFocusToFirst(processedFiles.value),
-      moveFocusToLast: () => moveFocusToLast(processedFiles.value),
-      selectFocused: () => selectFocused(),
-      toggleFocusedSelection: () => toggleFocusedSelection(),
+      moveFocusUp: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.moveFocusUp();
+        } else {
+          moveFocusUp(processedFiles.value);
+        }
+      },
+      moveFocusDown: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.moveFocusDown();
+        } else {
+          moveFocusDown(processedFiles.value);
+        }
+      },
+      moveFocusToFirst: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.moveFocusToFirst();
+        } else {
+          moveFocusToFirst(processedFiles.value);
+        }
+      },
+      moveFocusToLast: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.moveFocusToLast();
+        } else {
+          moveFocusToLast(processedFiles.value);
+        }
+      },
+      selectFocused: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.selectFocused();
+        } else {
+          selectFocused();
+        }
+      },
+      toggleFocusedSelection: () => {
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.toggleFocusedSelection();
+        } else {
+          toggleFocusedSelection();
+        }
+      },
       openFocusedItem: () => {
-        const item = getFocusedItem(processedFiles.value);
-        if (item) {
-          handleItemDoubleClick(item);
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.openFocusedItem();
+        } else {
+          const item = getFocusedItem(processedFiles.value);
+          if (item) {
+            handleItemDoubleClick(item);
+          }
         }
       },
     },
-    () => files.value
+    () => isDualMode.value ? (getActivePanelMethods()?.getFiles() || []) : files.value
 );
 
 useKeyboard(shortcuts);
 
-// Swipe navigation (two-finger swipe on trackpad)
+// Swipe navigation (two-finger swipe on trackpad) - works in both modes
 useSwipeNavigation({
-  onSwipeLeft: goBack,
-  onSwipeRight: goForward,
-  canSwipeLeft: () => canGoBack.value,
-  canSwipeRight: () => canGoForward.value,
+  onSwipeLeft: () => {
+    if (isDualMode.value) {
+      // In dual mode, navigate back in active panel's history
+      const methods = getActivePanelMethods();
+      if (methods) methods.goBack();
+    } else {
+      goBack();
+    }
+  },
+  onSwipeRight: () => {
+    if (isDualMode.value) {
+      // In dual mode, navigate forward in active panel's history
+      const methods = getActivePanelMethods();
+      if (methods) methods.goForward();
+    } else {
+      goForward();
+    }
+  },
+  canSwipeLeft: () => {
+    if (isDualMode.value) {
+      // In dual mode, check if active panel can go back
+      const methods = getActivePanelMethods();
+      return methods ? methods.canGoBack() : false;
+    }
+    return canGoBack.value;
+  },
+  canSwipeRight: () => {
+    if (isDualMode.value) {
+      // In dual mode, check if active panel can go forward
+      const methods = getActivePanelMethods();
+      return methods ? methods.canGoForward() : false;
+    }
+    return canGoForward.value;
+  },
 });
 
-// Context menu handlers
+// Context menu handlers (work in both single and dual modes)
 const contextMenuHandlers = {
   open: () => {
     if (contextMenu.value?.item) {
       fileOps.handleOpenFile(contextMenu.value.item);
     }
   },
-  copy: () => fileOps.handleCopy(getSelected()),
-  cut: () => fileOps.handleCut(getSelected()),
-  paste: () => fileOps.handlePaste(currentPath.value),
-  rename: () => fileOps.handleRename(getSelected(), currentPath.value, showInput),
-  delete: () => fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm),
+  copy: () => {
+    if (isDualMode.value) {
+      const methods = getActivePanelMethods();
+      if (methods) methods.handleCopy();
+    } else {
+      fileOps.handleCopy(getSelected());
+    }
+  },
+  cut: () => {
+    if (isDualMode.value) {
+      const methods = getActivePanelMethods();
+      if (methods) methods.handleCut();
+    } else {
+      fileOps.handleCut(getSelected());
+    }
+  },
+  paste: () => {
+    if (isDualMode.value) {
+      const methods = getActivePanelMethods();
+      if (methods) methods.handlePaste();
+    } else {
+      fileOps.handlePaste(currentPath.value);
+    }
+  },
+  rename: () => {
+    if (isDualMode.value) {
+      const methods = getActivePanelMethods();
+      if (methods) methods.handleRename();
+    } else {
+      fileOps.handleRename(getSelected(), currentPath.value, showInput);
+    }
+  },
+  delete: () => {
+    if (isDualMode.value) {
+      const methods = getActivePanelMethods();
+      if (methods) methods.handleDelete();
+    } else {
+      fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm);
+    }
+  },
   addToFavorites: () => {
     if (contextMenu.value?.item) {
       handleAddFolderToBookmarks(contextMenu.value.item);
@@ -462,9 +774,19 @@ const contextMenuHandlers = {
     }
   },
   properties: () => {
-    const selected = getSelected();
-    if (selected.length === 1) {
-      propertiesDialog.value = { isOpen: true, file: selected[0] };
+    if (isDualMode.value) {
+      const methods = getActivePanelMethods();
+      if (methods) {
+        const selected = methods.getSelectedItems();
+        if (selected.length === 1) {
+          propertiesDialog.value = { isOpen: true, file: selected[0] };
+        }
+      }
+    } else {
+      const selected = getSelected();
+      if (selected.length === 1) {
+        propertiesDialog.value = { isOpen: true, file: selected[0] };
+      }
     }
   },
 };
@@ -484,11 +806,25 @@ watch(currentPath, async () => {
 
 // Save tabs and paths - DIRECT SIMPLE VERSION
 // ВАЖНО: deep: true чтобы отслеживать изменения внутри объектов!
-watch([tabs, activeTabId, currentPath, expandedFolders, sidebarSectionsExpanded], async () => {
+watch([
+  tabs,
+  activeTabId,
+  currentPath,
+  panelMode,
+  leftPanelTabs,
+  leftPanelActiveTabId,
+  rightPanelTabs,
+  rightPanelActiveTabId,
+  leftPanelWidthPercent,
+  activePanel,
+  expandedFolders,
+  sidebarSectionsExpanded
+], async () => {
   console.log('[App] 🔥 State changed:');
   console.log('  - Tabs:', tabs.value.length);
   console.log('  - Active tab:', activeTabId.value);
   console.log('  - Current path:', currentPath.value);
+  console.log('  - Panel mode:', panelMode.value);
   console.log('  - Expanded folders:', expandedFolders.value.length);
   console.log('  - Sidebar quickAccess:', sidebarSectionsExpanded.value.quickAccess);
   console.log('  - Sidebar folderTree:', sidebarSectionsExpanded.value.folderTree);
@@ -510,6 +846,8 @@ watch([tabs, activeTabId, currentPath, expandedFolders, sidebarSectionsExpanded]
       tabs: tabsToSave,
       active_tab_id: activeTabId.value,
       last_path: currentPath.value,
+      panel_mode: panelMode.value,
+      dual_panel_config: serializeDualPanelState(),
       window: { maximized: false },
       sidebar: {
         expanded_folders: expandedFolders.value,
@@ -539,28 +877,41 @@ onMounted(async () => {
   const uiState = await loadUIState();
   console.log('[App] ===== Loaded UI state:', uiState);
 
-  // Восстановить табы если есть
-  if (uiState && uiState.tabs && uiState.tabs.length > 0) {
-    console.log('[App] ✅ Restoring', uiState.tabs.length, 'tabs');
+  // Восстановить режим панелей
+  if (uiState?.panel_mode) {
+    console.log('[App] ✅ Restoring panel mode:', uiState.panel_mode);
+    panelMode.value = uiState.panel_mode;
 
-    tabs.value = uiState.tabs.map(tabState => ({
-      id: tabState.id,
-      path: tabState.path,
-      name: tabState.name,
-      history: [tabState.path],
-      historyIndex: 0,
-    }));
-
-    // Восстановить активный таб
-    if (uiState.active_tab_id) {
-      console.log('[App] ✅ Restoring active tab:', uiState.active_tab_id);
-      activeTabId.value = uiState.active_tab_id;
+    if (uiState.panel_mode === 'dual' && uiState.dual_panel_config) {
+      console.log('[App] ✅ Restoring dual panel config');
+      loadDualPanelState(uiState.dual_panel_config);
     }
-  } else if (uiState && uiState.last_path && uiState.last_path.length > 0) {
-    console.log('[App] ✅ Restoring last path:', uiState.last_path);
-    navigateTo(uiState.last_path);
-  } else {
-    console.log('[App] ℹ️ No tabs or path to restore');
+  }
+
+  // Восстановить табы если есть (только если НЕ dual mode)
+  if (!isDualMode.value) {
+    if (uiState && uiState.tabs && uiState.tabs.length > 0) {
+      console.log('[App] ✅ Restoring', uiState.tabs.length, 'tabs');
+
+      tabs.value = uiState.tabs.map(tabState => ({
+        id: tabState.id,
+        path: tabState.path,
+        name: tabState.name,
+        history: [tabState.path],
+        historyIndex: 0,
+      }));
+
+      // Восстановить активный таб
+      if (uiState.active_tab_id) {
+        console.log('[App] ✅ Restoring active tab:', uiState.active_tab_id);
+        activeTabId.value = uiState.active_tab_id;
+      }
+    } else if (uiState && uiState.last_path && uiState.last_path.length > 0) {
+      console.log('[App] ✅ Restoring last path:', uiState.last_path);
+      navigateTo(uiState.last_path);
+    } else {
+      console.log('[App] ℹ️ No tabs or path to restore');
+    }
   }
 });
 </script>
@@ -580,76 +931,84 @@ onMounted(async () => {
 
     <!-- Toolbar -->
     <Toolbar
-        :tabs="tabs"
-        :active-tab-id="activeTabId"
-        :current-path="currentPath"
+        :tabs="isDualMode ? activePanelTabs : tabs"
+        :active-tab-id="isDualMode ? activePanelTabId : activeTabId"
+        :current-path="isDualMode ? activePanelPath : currentPath"
         :view-mode="viewMode"
-        :can-go-back="canGoBack"
-        :can-go-forward="canGoForward"
+        :panel-mode="panelMode"
+        :can-go-back="canGoBackComputed"
+        :can-go-forward="canGoForwardComputed"
         :can-go-up="canGoUp"
         :is-current-path-bookmarked="isCurrentPathBookmarked"
-        @go-back="goBack"
-        @go-forward="goForward"
-        @go-up="goUp"
-        @go-home="goHome"
+        @go-back="handleGoBack"
+        @go-forward="handleGoForward"
+        @go-up="handleGoUp"
+        @go-home="handleGoHome"
         @navigate-to-breadcrumb="navigateToBreadcrumb"
         @navigate-to-path="handleNavigateToPath"
         @switch-tab="switchTab"
         @close-tab="closeTab"
-        @add-tab="addTab"
+        @add-tab="handleAddTab"
         @update:view-mode="(mode) => viewMode = mode"
         @open-command-palette="() => isCommandPaletteOpen = true"
         @toggle-bookmark="handleToggleBookmark"
+        @toggle-panel-mode="togglePanelMode"
     />
 
     <!-- Main Content -->
     <div class="flex-1 flex overflow-hidden">
-      <!-- Sidebar -->
-      <Sidebar
-          :current-path="'/' + currentPath.join('/')"
-          :width="sidebarWidth"
-          @navigate="(path) => navigateTo(path.split('/').filter(p => p))"
-          @drop="handleSidebarDrop"
-          @resize="handleSidebarResize"
-      />
+      <!-- Dual Panel Mode -->
+      <DualPanelContainer v-if="isDualMode" :view-mode="viewMode" />
 
-      <!-- Main Area -->
-      <div class="flex-1 flex overflow-hidden">
-        <!-- File List -->
-        <FileList
-            :items="processedFiles"
-            :view-mode="viewMode"
-            :selected-ids="selectedIds"
-            :focused-id="focusedId"
-            :is-loading="isLoading"
-            :is-dragging="isDragging"
-            :drag-target-id="dragOverId"
-            @item-click="(item, event) => handleItemClick(item, files, event)"
-            @item-double-click="handleItemDoubleClick"
-            @item-context-menu="handleContextMenu"
-            @drag-start="handleDragStart"
-            @drag-over="handleDragOver"
-            @drag-leave="handleDragLeave"
-            @drop="handleItemDrop"
-            @drop-on-background="handleBackgroundDrop"
-            @drag-over-background="handleDragOverBackground"
-            @toggle-selection="(item) => handleItemClick(item, files, { ctrlKey: true } as MouseEvent)"
-            @copy-item="(item) => fileOps.handleCopy([item])"
-            @cut-item="(item) => fileOps.handleCut([item])"
-            @delete-item="(item) => fileOps.handleDelete([item], currentPath, clearSelection, showConfirm)"
-            @rename-item="(item) => fileOps.handleRename([item], currentPath, showInput)"
-            @open-terminal="handleOpenTerminal"
+      <!-- Single Panel Mode -->
+      <template v-else>
+        <!-- Sidebar -->
+        <Sidebar
+            :current-path="'/' + currentPath.join('/')"
+            :width="sidebarWidth"
+            @navigate="(path) => navigateTo(path.split('/').filter(p => p))"
+            @drop="handleSidebarDrop"
+            @resize="handleSidebarResize"
         />
 
-        <!-- Preview Panel -->
-        <Preview
-            :file="previewFile"
-            :width="previewWidth"
-            @close="previewFile = null"
-            @open="fileOps.handleOpenFile"
-            @resize="handlePreviewResize"
-        />
-      </div>
+        <!-- Main Area -->
+        <div class="flex-1 flex overflow-hidden">
+          <!-- File List -->
+          <FileList
+              :items="processedFiles"
+              :view-mode="viewMode"
+              :selected-ids="selectedIds"
+              :focused-id="focusedId"
+              :is-loading="isLoading"
+              :is-dragging="isDragging"
+              :drag-target-id="dragOverId"
+              @item-click="(item, event) => handleItemClick(item, files, event)"
+              @item-double-click="handleItemDoubleClick"
+              @item-context-menu="handleContextMenu"
+              @drag-start="handleDragStart"
+              @drag-over="handleDragOver"
+              @drag-leave="handleDragLeave"
+              @drop="handleItemDrop"
+              @drop-on-background="handleBackgroundDrop"
+              @drag-over-background="handleDragOverBackground"
+              @toggle-selection="(item) => handleItemClick(item, files, { ctrlKey: true } as MouseEvent)"
+              @copy-item="(item) => fileOps.handleCopy([item])"
+              @cut-item="(item) => fileOps.handleCut([item])"
+              @delete-item="(item) => fileOps.handleDelete([item], currentPath, clearSelection, showConfirm)"
+              @rename-item="(item) => fileOps.handleRename([item], currentPath, showInput)"
+              @open-terminal="handleOpenTerminal"
+          />
+
+          <!-- Preview Panel -->
+          <Preview
+              :file="previewFile"
+              :width="previewWidth"
+              @close="previewFile = null"
+              @open="fileOps.handleOpenFile"
+              @resize="handlePreviewResize"
+          />
+        </div>
+      </template>
     </div>
 
     <!-- Command Palette -->

@@ -3,10 +3,11 @@ import type { FileItem } from '../types';
 
 type ClipboardOperation = 'copy' | 'cut' | null;
 
-export function useClipboard() {
-  const clipboardItems = ref<FileItem[]>([]);
-  const operation = ref<ClipboardOperation>(null);
+// Module-level shared clipboard state (singleton for cross-panel copy/paste)
+const clipboardItems = ref<FileItem[]>([]);
+const operation = ref<ClipboardOperation>(null);
 
+export function useClipboard() {
   const hasClipboardItems = computed(() => clipboardItems.value.length > 0);
   const isCopyOperation = computed(() => operation.value === 'copy');
   const isCutOperation = computed(() => operation.value === 'cut');
@@ -18,7 +19,7 @@ export function useClipboard() {
     clipboardItems.value = [...items];
     operation.value = 'copy';
 
-    console.log(`Copied ${items.length} item(s) to clipboard`);
+    console.log(`[Clipboard] Copied ${items.length} item(s):`, items.map(i => i.name));
   };
 
   // Cut items to clipboard
@@ -28,7 +29,7 @@ export function useClipboard() {
     clipboardItems.value = [...items];
     operation.value = 'cut';
 
-    console.log(`Cut ${items.length} item(s) to clipboard`);
+    console.log(`[Clipboard] Cut ${items.length} item(s):`, items.map(i => i.name));
   };
 
   // Paste items from clipboard
@@ -38,23 +39,26 @@ export function useClipboard() {
     onMove: (sources: string[], destination: string) => Promise<void>
   ): Promise<void> => {
     if (!hasClipboardItems.value) {
+      console.warn('[Clipboard] Paste failed: Clipboard is empty');
       throw new Error('Clipboard is empty');
     }
 
     const sources = clipboardItems.value.map(item => item.path);
+    console.log(`[Clipboard] Pasting ${sources.length} item(s) to:`, destinationPath);
+    console.log(`[Clipboard] Operation:`, operation.value);
 
     try {
       if (operation.value === 'copy') {
         await onCopy(sources, destinationPath);
-        console.log(`Pasted ${sources.length} item(s) (copied)`);
+        console.log(`[Clipboard] ✅ Pasted ${sources.length} item(s) (copied)`);
       } else if (operation.value === 'cut') {
         await onMove(sources, destinationPath);
-        console.log(`Pasted ${sources.length} item(s) (moved)`);
+        console.log(`[Clipboard] ✅ Pasted ${sources.length} item(s) (moved)`);
         // Clear clipboard after cut operation
         clear();
       }
     } catch (error) {
-      console.error(error);
+      console.error('[Clipboard] ❌ Paste error:', error);
       throw new Error(`Failed to paste: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };

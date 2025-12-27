@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import type { Tab, ViewMode } from '../types';
+import type { Tab, ViewMode, PanelMode } from '../types';
 
 interface Props {
   tabs: Tab[];
@@ -12,6 +12,7 @@ interface Props {
   canGoForward: boolean;
   canGoUp: boolean;
   isCurrentPathBookmarked?: boolean;
+  panelMode?: PanelMode;
 }
 
 interface Emits {
@@ -27,6 +28,7 @@ interface Emits {
   (e: 'update:viewMode', mode: ViewMode): void;
   (e: 'openCommandPalette'): void;
   (e: 'toggleBookmark'): void;
+  (e: 'togglePanelMode'): void;
 }
 
 const props = defineProps<Props>();
@@ -333,6 +335,23 @@ watch(fullPath, () => {
           ⊞
         </button>
       </div>
+
+      <!-- Separator -->
+      <div class="w-px h-[24px] bg-[#919B9C] ml-1"></div>
+
+      <!-- Dual Panel Toggle Button -->
+      <button
+        @click="emit('togglePanelMode')"
+        :class="[
+          'w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4]',
+          'border border-[#8B8B8B] hover:border-[#0054E3]',
+          'flex items-center justify-center transition-all',
+          panelMode === 'dual' && 'bg-[#C1D2EE] from-[#C1D2EE] to-[#A8C0E8]'
+        ]"
+        :title="panelMode === 'dual' ? 'Single Panel' : 'Dual Panel'"
+      >
+        {{ panelMode === 'dual' ? '⊟' : '⊞⊞' }}
+      </button>
     </div>
 
     <!-- Tabs -->
