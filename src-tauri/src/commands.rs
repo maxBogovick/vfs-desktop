@@ -519,3 +519,96 @@ pub fn get_system_stats() -> Result<SystemStats, String> {
         Err("Failed to get process information".to_string())
     }
 }
+
+// ====== Conflict Resolution Commands ======
+
+#[derive(Serialize)]
+pub struct FileConflictInfo {
+    source_path: String,
+    destination_path: String,
+    source_file: FileMetadata,
+    destination_file: FileMetadata,
+}
+
+#[derive(Serialize)]
+pub struct FileMetadata {
+    name: String,
+    size: u64,
+    modified: u64,
+}
+
+#[tauri::command]
+pub fn check_file_conflict(
+    source_path: String,
+    destination_dir: String,
+) -> Result<Option<FileConflictInfo>, String> {
+    use std::path::Path;
+    use std::fs;
+
+    let source = Path::new(&source_path);
+
+    // Получаем имя файла/папки
+    let file_name = source
+        .file_name()
+        .and_then(|n| n.to_str())
+        .ok_or_else(|| "Invalid source path".to_string())?;
+
+    // Формируем путь назначения
+    let dest_path = Path::new(&destination_dir).join(file_name);
+
+    // Проверяем существует ли файл в месте назначения
+    if !dest_path.exists() {
+        return Ok(None); // Нет конфликта
+    }
+
+    // Получаем метаданные источника
+    let source_metadata = fs::metadata(&source)
+        .map_err(|e| format!("Failed to read source metadata: {}", e))?;
+
+    // Получаем метаданные назначения
+    let dest_metadata = fs::metadata(&dest_path)
+        .map_err(|e| format!("Failed to read destination metadata: {}", e))?;
+
+    // Получаем timestamps
+    let source_modified = source_metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    let dest_modified = dest_metadata
+        .modified()
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+
+    // Создаем информацию о конфликте
+    Ok(Some(FileConflictInfo {
+        source_path: source_path.clone(),
+        destination_path: dest_path.to_string_lossy().to_string(),
+        source_file: FileMetadata {
+            name: file_name.to_string(),
+            size: source_metadata.len(),
+            modified: source_modified,
+        },
+        destination_file: FileMetadata {
+            name: file_name.to_string(),
+            size: dest_metadata.len(),
+            modified: dest_modified,
+        },
+    }))
+}
+
+#[tauri::command]
+pub fn copy_file_with_custom_name(
+    source_path: String,
+    destination_dir: String,
+    new_name: String,
+) -> Result<(), String> {
+    let fs = get_filesystem();
+    fs.as_trait()
+        .copy_with_custom_name(&source_path, &destination_dir, &new_name)
+        .map_err(|e| e.message)
+}

@@ -276,6 +276,52 @@ impl FileSystem for RealFileSystem {
         Ok(())
     }
 
+    fn copy_with_custom_name(
+        &self,
+        source: &str,
+        destination_dir: &str,
+        new_name: &str,
+    ) -> FileSystemResult<()> {
+        let source_path = PathBuf::from(source);
+        let dest_dir = PathBuf::from(destination_dir);
+        let dest_path = dest_dir.join(new_name);
+
+        // Check if source exists
+        if !source_path.exists() {
+            return Err(FileSystemError::new(format!(
+                "Source does not exist: {}",
+                source
+            )));
+        }
+
+        // Check if destination directory exists
+        if !dest_dir.exists() || !dest_dir.is_dir() {
+            return Err(FileSystemError::new(format!(
+                "Destination is not a valid directory: {}",
+                destination_dir
+            )));
+        }
+
+        // Copy file or directory
+        if source_path.is_file() {
+            fs::copy(&source_path, &dest_path)
+                .map_err(|e| FileSystemError::new(format!("Failed to copy file: {}", e)))?;
+
+            // Copy permissions
+            if let Ok(metadata) = fs::metadata(&source_path) {
+                let _ = fs::set_permissions(&dest_path, metadata.permissions());
+            }
+        } else if source_path.is_dir() {
+            Self::copy_dir_recursive(&source_path, &dest_path)?;
+        } else {
+            return Err(FileSystemError::new(
+                "Source is neither a file nor a directory".to_string(),
+            ));
+        }
+
+        Ok(())
+    }
+
     fn move_items(&self, sources: &[String], destination: &str) -> FileSystemResult<()> {
         let dest_path = PathBuf::from(destination);
 

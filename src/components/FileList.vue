@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { ref } from 'vue';
 import type { FileItem, ViewMode } from '../types';
+import type { FileGroup } from '../composables/useGrouping';
 
 interface Props {
   items: FileItem[];
@@ -9,6 +11,7 @@ interface Props {
   isLoading?: boolean;
   isDragging?: boolean;
   dragTargetId?: string | null;
+  groups?: FileGroup[];
 }
 
 interface Emits {
@@ -34,9 +37,25 @@ const props = withDefaults(defineProps<Props>(), {
   isLoading: false,
   isDragging: false,
   dragTargetId: null,
+  groups: undefined,
 });
 
 const emit = defineEmits<Emits>();
+
+// Track collapsed groups
+const collapsedGroups = ref<Set<string>>(new Set());
+
+const toggleGroupCollapse = (groupId: string) => {
+  if (collapsedGroups.value.has(groupId)) {
+    collapsedGroups.value.delete(groupId);
+  } else {
+    collapsedGroups.value.add(groupId);
+  }
+};
+
+const isGroupCollapsed = (groupId: string) => {
+  return collapsedGroups.value.has(groupId);
+};
 
 const getFileIcon = (item: FileItem) => {
   const icons: Record<string, string> = {
@@ -102,7 +121,115 @@ const isFocused = (itemId: string) => {
       </div>
     </div>
 
-    <!-- Grid View -->
+    <!-- WITH GROUPS -->
+    <template v-else-if="groups && groups.length > 0">
+      <div v-for="group in groups" :key="group.id" class="mb-6">
+        <!-- Group Header -->
+        <div
+          v-if="groups.length > 1 || group.id !== 'all'"
+          @click="toggleGroupCollapse(group.id)"
+          class="flex items-center gap-2 mb-2 py-2 px-3 bg-gradient-to-r from-[#F1EFE2] to-[#ECE9D8] border-b-2 cursor-pointer hover:from-[#E8E3D4] hover:to-[#E0DBD0] transition-colors sticky top-0 z-10 shadow-sm"
+          :style="{ borderColor: group.color }"
+        >
+          <!-- Collapse Toggle -->
+          <svg
+            :class="['w-3 h-3 transition-transform', !isGroupCollapsed(group.id) && 'rotate-90']"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+              clip-rule="evenodd"
+            />
+          </svg>
+
+          <!-- Group Icon & Name -->
+          <span class="text-base">{{ group.icon }}</span>
+          <span class="text-xs font-bold text-[#0b0b0b] uppercase tracking-wide">{{ group.name }}</span>
+
+          <!-- Item Count -->
+          <span class="ml-auto text-[10px] text-gray-600 font-medium px-2 py-0.5 bg-white/60 rounded-full">
+            {{ group.items.length }} {{ group.items.length === 1 ? 'item' : 'items' }}
+          </span>
+        </div>
+
+        <!-- Grid View -->
+        <div v-if="!isGroupCollapsed(group.id) && viewMode === 'grid'" class="grid grid-cols-4 gap-4 pb-4">
+          <div
+            v-for="item in group.items"
+            :key="item.id"
+            :draggable="true"
+            @dragstart="emit('dragStart', item, $event)"
+            @dragend="emit('dragEnd')"
+            @dragover.prevent="emit('dragOver', item, $event)"
+            @dragleave="emit('dragLeave', item)"
+            @drop.stop="emit('drop', item, $event)"
+            @click="emit('itemClick', item, $event)"
+            @dblclick="emit('itemDoubleClick', item)"
+            @contextmenu="emit('itemContextMenu', item, $event)"
+            :class="[
+              'flex flex-col items-center justify-center p-3 rounded cursor-pointer transition-all relative',
+              selectedIds.has(item.id) ? 'bg-[#C1D2EE] border border-[#0A246A]' : 'hover:bg-[#E8F2FD] border border-transparent hover:border-[#C1D2EE]',
+              isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[#0054E3] ring-inset',
+              isDragTarget(item.id) && 'ring-2 ring-blue-400 bg-blue-50',
+              isBeingDragged(item.id) && 'opacity-50',
+            ]"
+          >
+            <input
+              type="checkbox"
+              :checked="selectedIds.has(item.id)"
+              @click.stop="emit('toggleSelection', item)"
+              class="absolute top-1 left-1 w-3 h-3 cursor-pointer"
+            />
+            <div class="text-4xl mb-2">{{ getFileIcon(item) }}</div>
+            <div class="text-[10px] text-center break-words w-full">{{ item.name }}</div>
+          </div>
+        </div>
+
+        <!-- List View -->
+        <div v-else-if="!isGroupCollapsed(group.id)" class="space-y-0.5 pb-4">
+          <div
+            v-for="item in group.items"
+            :key="item.id"
+            :draggable="true"
+            @dragstart="emit('dragStart', item, $event)"
+            @dragend="emit('dragEnd')"
+            @dragover.prevent="emit('dragOver', item, $event)"
+            @dragleave="emit('dragLeave', item)"
+            @drop.stop="emit('drop', item, $event)"
+            @click="emit('itemClick', item, $event)"
+            @dblclick="emit('itemDoubleClick', item)"
+            @contextmenu="emit('itemContextMenu', item, $event)"
+            :class="[
+              'flex items-center gap-3 px-2 py-1 rounded cursor-pointer transition-all',
+              selectedIds.has(item.id) ? 'bg-[#C1D2EE] border border-[#0A246A]' : 'hover:bg-[#E8F2FD]',
+              isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[#0054E3] ring-inset',
+              isDragTarget(item.id) && 'ring-2 ring-blue-400 bg-blue-50',
+              isBeingDragged(item.id) && 'opacity-50',
+            ]"
+          >
+            <input
+              type="checkbox"
+              :checked="selectedIds.has(item.id)"
+              @click.stop="emit('toggleSelection', item)"
+              class="w-3 h-3 flex-shrink-0 cursor-pointer"
+            />
+            <div class="text-lg flex-shrink-0">{{ getFileIcon(item) }}</div>
+            <div class="flex-1 min-w-0 text-[11px]">{{ item.name }}</div>
+            <div v-if="item.modified" class="text-[10px] text-gray-500 flex-shrink-0 hidden sm:block">{{ item.modified }}</div>
+            <div v-if="item.sizeFormatted" class="text-[10px] text-gray-500 flex-shrink-0 w-20 text-right">{{ item.sizeFormatted }}</div>
+            <div v-if="item.tags && item.tags.length > 0" class="flex gap-1 flex-shrink-0">
+              <span v-for="tag in item.tags" :key="tag" :class="`${getTagColor(tag)} text-white px-1.5 py-0.5 rounded-full text-[9px]`">
+                {{ tag }}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <!-- NO GROUPS: Grid View -->
     <div v-else-if="viewMode === 'grid'" class="grid grid-cols-4 gap-4 pb-20">
       <div
         v-for="item in items"

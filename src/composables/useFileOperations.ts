@@ -1,9 +1,10 @@
-import type { FileItem } from '../types';
-import { useFileSystem } from './useFileSystem';
-import { useClipboard } from './useClipboard';
-import { useNotifications } from './useNotifications';
-import { useFileContentCache } from './useFileContentCache';
-import { useFileOperationsProgress } from './useFileOperationsProgress';
+import type {FileItem} from '../types';
+import {useFileSystem} from './useFileSystem';
+import {useClipboard} from './useClipboard';
+import {useNotifications} from './useNotifications';
+import {useFileContentCache} from './useFileContentCache';
+import {useFileOperationsProgress} from './useFileOperationsProgress';
+import {useConflictResolution} from './useConflictResolution';
 
 export function useFileOperations(refreshCallback?: () => Promise<void>) {
   const {
@@ -24,7 +25,6 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     hasClipboardItems,
     copy: copyToClipboard,
     cut: cutToClipboard,
-    paste: pasteFromClipboard,
   } = useClipboard();
 
   const { success, error: showError, warning } = useNotifications();
@@ -73,20 +73,153 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     }
   };
 
-  // Paste items from clipboard
+  // Paste items from clipboard with conflict resolution
   const handlePaste = async (currentPath: string[]) => {
     if (!hasClipboardItems.value) {
       warning('Nothing to paste', 'Clipboard is empty');
       return;
     }
 
+    const {
+      checkConflict,
+      requestConflictResolution,
+      resetSavedResolution,
+    } = useConflictResolution();
+
+    const { clipboardItems, operation } = useClipboard();
+
     try {
       const currentDir = await getCurrentDirectory(currentPath);
-      await pasteFromClipboard(currentDir, copyItemsWithProgress, moveItemsWithProgress);
+
+      // Reset any saved "apply to all" resolution from previous operations
+      resetSavedResolution();
+
+      // Check for conflicts
+      const itemsToProcess: Array<{
+        sourcePath: string;
+        targetPath: string;
+        action: 'copy' | 'move' | 'rename';
+        newName?: string;
+      }> = [];
+
+      const itemsToSkip: string[] = [];
+
+      for (const item of clipboardItems.value) {
+        const conflict = await checkConflict(item.path, currentDir);
+
+        if (conflict) {
+          // File exists, ask user what to do
+          try {
+            const resolution = await requestConflictResolution(conflict);
+
+            if (resolution.action === 'skip') {
+              itemsToSkip.push(item.path);
+              continue;
+            }
+
+            if (resolution.action === 'replace') {
+              // Just copy/move normally, will overwrite
+              itemsToProcess.push({
+                sourcePath: item.path,
+                targetPath: currentDir,
+                action: operation.value === 'copy' ? 'copy' : 'move',
+                newName: undefined,
+              });
+            } else if (resolution.action === 'rename') {
+              // Copy/move with new name
+              if (resolution.newName) {
+                // For rename, we always use copy_file_with_custom_name
+                // and then delete source if operation is 'cut'
+                itemsToProcess.push({
+                  sourcePath: item.path,
+                  targetPath: currentDir,
+                  action: 'rename',
+                  newName: resolution.newName,
+                });
+              }
+            }
+            // 'compare' action is not implemented yet
+          } catch (err) {
+            // User cancelled conflict resolution
+            warning('Operation cancelled', 'File operation was cancelled');
+            resetSavedResolution();
+            return;
+          }
+        } else {
+          // No conflict, proceed normally
+          itemsToProcess.push({
+            sourcePath: item.path,
+            targetPath: item.path,
+            action: operation.value === 'copy' ? 'copy' : 'move',
+            newName: undefined,
+          });
+        }
+      }
+
+      // Now perform the operations
+      if (itemsToProcess.length === 0) {
+        warning('No files to paste', 'All files were skipped');
+        resetSavedResolution();
+        return;
+      }
+
+      // Group by action
+      const sourcesToCopy = itemsToProcess
+        .filter(i => i.action === 'copy')
+        .map(i => i.sourcePath);
+      const sourcesToMove = itemsToProcess
+        .filter(i => i.action === 'move')
+        .map(i => i.sourcePath);
+      const itemsToRename = itemsToProcess
+        .filter(i => i.action === 'rename');
+
+      if (sourcesToCopy.length > 0) {
+        await copyItemsWithProgress(sourcesToCopy, currentDir);
+      }
+
+      if (sourcesToMove.length > 0) {
+        await moveItemsWithProgress(sourcesToMove, currentDir);
+      }
+
+      // Handle rename actions separately (copy with custom name)
+      const { invoke } = await import('@tauri-apps/api/core');
+      for (const item of itemsToRename) {
+        if (item.newName) {
+          // Copy file with custom name
+          await invoke('copy_file_with_custom_name', {
+            sourcePath: item.sourcePath,
+            destinationDir: item.targetPath,
+            newName: item.newName,
+          });
+
+          // If original operation was 'cut', delete the source file
+          if (operation.value === 'cut') {
+            await deleteItemsWithProgress([item.sourcePath]);
+          }
+        }
+      }
+
+      // Report results
+      const skippedCount = itemsToSkip.length;
+      const processedCount = itemsToProcess.length;
+
+      if (skippedCount > 0) {
+        warning(
+          'Some files skipped',
+          `${processedCount} file(s) pasted, ${skippedCount} skipped`
+        );
+      } else {
+        success('Pasted', `${processedCount} file(s) pasted successfully`);
+      }
+
       // Refresh directory after paste
       await refreshDirectory(currentPath);
+
+      // Reset saved resolution
+      resetSavedResolution();
     } catch (err) {
       showError('Paste failed', err instanceof Error ? err.message : 'Unknown error');
+      resetSavedResolution();
     }
   };
 

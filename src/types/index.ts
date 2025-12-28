@@ -192,3 +192,27 @@ export interface FileOperation {
   progress: ProgressEvent;
   startTime: number;
 }
+
+// Conflict Resolution Types
+export type ConflictAction = 'skip' | 'replace' | 'rename' | 'compare';
+
+export interface FileConflict {
+  sourcePath: string;
+  destinationPath: string;
+  sourceFile: {
+    name: string;
+    size: number;
+    modified: number;
+  };
+  destinationFile: {
+    name: string;
+    size: number;
+    modified: number;
+  };
+}
+
+export interface ConflictResolution {
+  action: ConflictAction;
+  newName?: string; // For 'rename' action
+  applyToAll: boolean;
+}

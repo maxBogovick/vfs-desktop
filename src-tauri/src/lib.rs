@@ -59,7 +59,10 @@ pub fn run() {
             // Directory size calculation
             calculate_directory_size,
             // System monitoring commands
-            get_system_stats
+            get_system_stats,
+            // Conflict resolution commands
+            check_file_conflict,
+            copy_file_with_custom_name
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

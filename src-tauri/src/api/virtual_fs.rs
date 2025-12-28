@@ -500,6 +500,50 @@ impl FileSystem for VirtualFileSystem {
         Ok(())
     }
 
+    fn copy_with_custom_name(
+        &self,
+        source: &str,
+        destination_dir: &str,
+        new_name: &str,
+    ) -> FileSystemResult<()> {
+        // Получаем узел источника
+        let node = self.find_node(source)?;
+
+        // Вставляем в место назначения с новым именем
+        let normalized_dest = self.normalize_path_internal(destination_dir);
+        let mut state = self.state.write()
+            .map_err(|_| FileSystemError::new("Не удалось получить блокировку"))?;
+
+        let parts: Vec<&str> = normalized_dest.split('/').filter(|s| !s.is_empty()).collect();
+        let mut current = &mut state.root;
+
+        for part in parts {
+            match current {
+                VfsNode::Directory { children, .. } => {
+                    current = children.get_mut(part)
+                        .ok_or_else(|| FileSystemError::new("Директория назначения не найдена"))?;
+                }
+                VfsNode::File { .. } => {
+                    return Err(FileSystemError::new("Назначение не является директорией"));
+                }
+            }
+        }
+
+        match current {
+            VfsNode::Directory { children, modified, .. } => {
+                children.insert(new_name.to_string(), node);
+                *modified = current_timestamp();
+            }
+            VfsNode::File { .. } => {
+                return Err(FileSystemError::new("Назначение не является директорией"));
+            }
+        }
+
+        drop(state);
+        self.save_state()?;
+        Ok(())
+    }
+
     fn move_items(&self, sources: &[String], destination: &str) -> FileSystemResult<()> {
         // Сначала копируем
         self.copy_items(sources, destination)?;

@@ -74,6 +74,14 @@ pub trait FileSystem: Send + Sync {
     /// Копирование файлов/директорий
     fn copy_items(&self, sources: &[String], destination: &str) -> FileSystemResult<()>;
 
+    /// Копирование файла/директории с переименованием
+    fn copy_with_custom_name(
+        &self,
+        source: &str,
+        destination_dir: &str,
+        new_name: &str,
+    ) -> FileSystemResult<()>;
+
     /// Перемещение файлов/директорий
     fn move_items(&self, sources: &[String], destination: &str) -> FileSystemResult<()>;
 

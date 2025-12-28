@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import GroupByDropdown from './GroupByDropdown.vue';
 import type { Tab, ViewMode, PanelMode } from '../types';
+import type { GroupBy } from '../composables/useGrouping';
 
 interface Props {
   tabs: Tab[];
@@ -13,6 +15,8 @@ interface Props {
   canGoUp: boolean;
   isCurrentPathBookmarked?: boolean;
   panelMode?: PanelMode;
+  groupBy?: GroupBy;
+  groupByOptions?: ReadonlyArray<{ value: string; label: string; icon: string }>;
 }
 
 interface Emits {
@@ -30,6 +34,7 @@ interface Emits {
   (e: 'toggleBookmark'): void;
   (e: 'togglePanelMode'): void;
   (e: 'toggleDashboard'): void;
+  (e: 'update:groupBy', value: GroupBy): void;
 }
 
 const props = defineProps<Props>();
@@ -227,6 +232,14 @@ watch(fullPath, () => {
       >
         📊
       </button>
+
+      <!-- Group By Dropdown -->
+      <GroupByDropdown
+        v-if="groupBy && groupByOptions"
+        :model-value="groupBy"
+        :options="groupByOptions"
+        @update:model-value="(value) => emit('update:groupBy', value)"
+      />
 
       <div class="w-px h-[24px] bg-[#919B9C]"></div>
 

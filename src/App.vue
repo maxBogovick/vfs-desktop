@@ -9,6 +9,7 @@ import CommandPalette from './components/CommandPalette.vue';
 import ContextMenu from './components/ContextMenu.vue';
 import Notifications from './components/Notifications.vue';
 import ConfirmDialog from './components/ConfirmDialog.vue';
+import ConflictDialog from './components/ConflictDialog.vue';
 import PropertiesDialog from './components/PropertiesDialog.vue';
 import InputDialog from './components/InputDialog.vue';
 import Settings from './components/Settings.vue';
@@ -30,6 +31,8 @@ import { useUIState } from './composables/useUIState';
 import { useSwipeNavigation } from './composables/useSwipeNavigation';
 import { useDualPanel, getActivePanelMethods } from './composables/useDualPanel';
 import { useContextMenu } from './composables/useContextMenu';
+import { useGrouping } from './composables/useGrouping';
+import { useConflictResolution } from './composables/useConflictResolution';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type { FileItem, ViewMode } from './types';
@@ -93,7 +96,6 @@ const {
   handleDragOver,
   handleDragLeave,
   handleDrop,
-  endDrag,
   handleDragOverBackground,
 } = useDragDrop();
 
@@ -108,6 +110,14 @@ const {
   showInput,
   closeInput,
 } = useDialogs();
+
+// Conflict Resolution
+const {
+  currentConflict,
+  isConflictDialogOpen,
+  handleResolution,
+  handleCancel: handleConflictCancel,
+} = useConflictResolution();
 
 // Bookmarks
 const {
@@ -216,6 +226,9 @@ const fileOps = useFileOperations(refreshCurrentDirectory);
 // Context Menu (global)
 const { contextMenu, showContextMenu, closeContextMenu } = useContextMenu();
 
+// Grouping
+const { groupBy, groupByOptions, groupFiles } = useGrouping();
+
 // Local state
 const viewMode = ref<ViewMode>('list');
 const isCommandPaletteOpen = ref(false);
@@ -235,6 +248,9 @@ const isCurrentPathBookmarked = computed(() => {
 
 // Computed
 const processedFiles = computed(() => processFiles(files.value));
+
+// File groups
+const fileGroups = computed(() => groupFiles(processedFiles.value));
 
 // Helper to get selected items
 const getSelected = () => getSelectedItems(files.value);
@@ -977,6 +993,8 @@ onMounted(async () => {
         :can-go-forward="canGoForwardComputed"
         :can-go-up="canGoUp"
         :is-current-path-bookmarked="isCurrentPathBookmarked"
+        :group-by="groupBy"
+        :group-by-options="groupByOptions"
         @go-back="handleGoBack"
         @go-forward="handleGoForward"
         @go-up="handleGoUp"
@@ -991,6 +1009,7 @@ onMounted(async () => {
         @toggle-bookmark="handleToggleBookmark"
         @toggle-panel-mode="togglePanelMode"
         @toggle-dashboard="handleToggleDashboard"
+        @update:group-by="(value) => groupBy = value"
     />
 
     <!-- Main Content -->
@@ -1004,7 +1023,7 @@ onMounted(async () => {
         <Sidebar
             :current-path="'/' + currentPath.join('/')"
             :width="sidebarWidth"
-            @navigate="(path) => navigateTo(path.split('/').filter(p => p))"
+            @navigate="(path) => navigateTo(path.split('/').filter((p: any) => p))"
             @drop="handleSidebarDrop"
             @resize="handleSidebarResize"
         />
@@ -1014,6 +1033,7 @@ onMounted(async () => {
           <!-- File List -->
           <FileList
               :items="processedFiles"
+              :groups="fileGroups"
               :view-mode="viewMode"
               :selected-ids="selectedIds"
               :focused-id="focusedId"
@@ -1112,6 +1132,14 @@ onMounted(async () => {
         :placeholder="inputDialog.placeholder"
         @confirm="(value) => { inputDialog.onConfirm(value); closeInput(); }"
         @cancel="closeInput"
+    />
+
+    <!-- Conflict Resolution Dialog -->
+    <ConflictDialog
+        :is-open="isConflictDialogOpen"
+        :conflict="currentConflict"
+        @resolve="handleResolution"
+        @cancel="handleConflictCancel"
     />
 
     <!-- Settings -->
