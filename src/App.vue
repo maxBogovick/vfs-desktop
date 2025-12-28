@@ -207,6 +207,9 @@ const isCommandPaletteOpen = ref(false);
 const previewFile = ref<FileItem | null>(null);
 const showSettings = ref(false);
 
+// System stats
+const systemStats = ref({ memory_mb: 0, cpu_percent: 0 });
+
 // Check if current path is bookmarked
 const isCurrentPathBookmarked = computed(() => {
   const path = '/' + currentPath.value.join('/');
@@ -865,12 +868,27 @@ watch([
   }
 }, { deep: true });
 
+// System stats update function
+const updateSystemStats = async () => {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const stats = await invoke<{ memory_mb: number; cpu_percent: number }>('get_system_stats');
+    systemStats.value = stats;
+  } catch (error) {
+    console.error('[App] Failed to get system stats:', error);
+  }
+};
+
 // Click outside handler
 onMounted(async () => {
   document.addEventListener('click', closeContextMenu);
 
   // Load bookmarks
   await loadBookmarks();
+
+  // Start system stats updates
+  updateSystemStats();
+  setInterval(updateSystemStats, 2000); // Update every 2 seconds
 
   // Load UI state and restore tabs
   // ВАЖНО: сначала загружаем через useUIState чтобы sidebar состояние восстановилось
@@ -1082,6 +1100,10 @@ onMounted(async () => {
       <span v-if="selectedCount > 0" class="ml-4">{{ selectedCount }} selected</span>
       <span v-if="hasActiveFilters" class="ml-4 text-blue-600">🔍 Filters active</span>
       <span v-if="isDragging" class="ml-4 text-orange-600">📋 Dragging {{ draggedItems.length }} item(s)...</span>
+      <span class="ml-auto text-[#555]">
+        RAM: {{ systemStats.memory_mb.toFixed(1) }} MB
+        <span class="ml-3">CPU: {{ systemStats.cpu_percent.toFixed(1) }}%</span>
+      </span>
     </div>
   </div>
 </template>

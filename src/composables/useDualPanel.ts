@@ -1,5 +1,5 @@
-import { ref, computed, type Ref } from 'vue';
-import type { Tab, PanelMode, ActivePanel, DualPanelConfig, TabState, FileItem } from '../types';
+import {computed, ref} from 'vue';
+import type {ActivePanel, DualPanelConfig, FileItem, PanelMode, Tab} from '../types';
 
 // Module-level shared state for dual panel mode
 const panelMode = ref<PanelMode>('single');

@@ -12,6 +12,8 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Runtime};
+use sysinfo::{System, Pid};
+use serde::Serialize;
 
 // Глобальное состояние конфигурации
 static APP_CONFIG: Lazy<Arc<RwLock<AppConfig>>> = Lazy::new(|| {
@@ -463,5 +465,38 @@ pub fn resume_operation(operation_id: String) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("Operation not found: {}", operation_id))
+    }
+}
+
+// ====== Команды для мониторинга системы ======
+
+#[derive(Serialize)]
+pub struct SystemStats {
+    memory_mb: f64,
+    cpu_percent: f32,
+}
+
+/// Получить статистику потребления ресурсов приложением
+#[tauri::command]
+pub fn get_system_stats() -> Result<SystemStats, String> {
+    let mut sys = System::new_all();
+
+    // Получаем PID текущего процесса
+    let pid = Pid::from_u32(std::process::id());
+
+    // Обновляем данные
+    sys.refresh_all();
+
+    // Получаем информацию о процессе
+    if let Some(process) = sys.process(pid) {
+        let memory_mb = process.memory() as f64 / 1024.0 / 1024.0;
+        let cpu_percent = process.cpu_usage();
+
+        Ok(SystemStats {
+            memory_mb,
+            cpu_percent,
+        })
+    } else {
+        Err("Failed to get process information".to_string())
     }
 }

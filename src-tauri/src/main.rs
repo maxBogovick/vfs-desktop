@@ -4,12 +4,12 @@
 use llm_utl::api::Scan;
 
 fn main() {
-//run();
-    vfdir_lib::run()
+run();
+//    vfdir_lib::run()
 }
 
 fn run() {
-    Scan::dir("../src")
+    Scan::dir("../")
         .allow_only(vec!("**/*.rs", "**/*.ts", "**/*.vue"))
         .run().unwrap();
 }

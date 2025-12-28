@@ -55,7 +55,9 @@ pub fn run() {
             delete_items_with_progress_command,
             cancel_operation,
             pause_operation,
-            resume_operation
+            resume_operation,
+            // System monitoring commands
+            get_system_stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
