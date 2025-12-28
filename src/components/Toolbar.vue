@@ -29,6 +29,7 @@ interface Emits {
   (e: 'openCommandPalette'): void;
   (e: 'toggleBookmark'): void;
   (e: 'togglePanelMode'): void;
+  (e: 'toggleDashboard'): void;
 }
 
 const props = defineProps<Props>();
@@ -216,6 +217,15 @@ watch(fullPath, () => {
         :title="isCurrentPathBookmarked ? 'Remove from Favorites (Ctrl+D)' : 'Add to Favorites (Ctrl+D)'"
       >
         {{ isCurrentPathBookmarked ? '⭐' : '☆' }}
+      </button>
+
+      <!-- Dashboard Button -->
+      <button
+        @click="emit('toggleDashboard')"
+        class="w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] flex items-center justify-center transition-all"
+        title="Folder Statistics Dashboard"
+      >
+        📊
       </button>
 
       <div class="w-px h-[24px] bg-[#919B9C]"></div>

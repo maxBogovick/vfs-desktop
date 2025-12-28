@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ref, watch } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import type { FileItem } from '../types';
 
 interface Props {
@@ -12,6 +14,39 @@ interface Emits {
 
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
+
+const recursiveSize = ref<{ total_bytes: number; total_items: number } | null>(null);
+const isCalculatingSize = ref(false);
+
+// Reset recursive size when file changes
+watch(() => props.file, () => {
+  recursiveSize.value = null;
+});
+
+const formatBytes = (bytes: number): string => {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
+
+const calculateFolderSize = async () => {
+  if (!props.file || (props.file.type !== 'folder' && props.file.type !== 'drive')) return;
+
+  isCalculatingSize.value = true;
+  try {
+    const result = await invoke<{ total_bytes: number; total_items: number }>(
+      'calculate_directory_size',
+      { path: props.file.path }
+    );
+    recursiveSize.value = result;
+  } catch (err) {
+    console.error('Failed to calculate folder size:', err);
+  } finally {
+    isCalculatingSize.value = false;
+  }
+};
 
 const getFileIcon = (item: FileItem) => {
   const icons: Record<string, string> = {
@@ -115,6 +150,27 @@ const getFileTypeName = (type: string) => {
               <div class="flex-1 text-xs">
                 {{ file.sizeFormatted }}
                 <span v-if="file.size" class="text-gray-500">({{ file.size.toLocaleString() }} bytes)</span>
+              </div>
+            </div>
+
+            <!-- Folder Size (for folders) -->
+            <div v-if="file.type === 'folder' || file.type === 'drive'" class="flex items-center gap-2">
+              <div class="w-24 text-xs text-gray-600">Folder Size:</div>
+              <div class="flex-1 flex items-center gap-2">
+                <button
+                  v-if="!recursiveSize"
+                  @click="calculateFolderSize"
+                  :disabled="isCalculatingSize"
+                  class="px-2 py-1 bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] rounded text-[10px] font-['Tahoma'] disabled:opacity-50"
+                >
+                  {{ isCalculatingSize ? 'Calculating...' : 'Calculate' }}
+                </button>
+                <div v-else class="text-xs">
+                  {{ formatBytes(recursiveSize.total_bytes) }}
+                  <span class="text-gray-500">
+                    ({{ recursiveSize.total_bytes.toLocaleString() }} bytes, {{ recursiveSize.total_items.toLocaleString() }} items)
+                  </span>
+                </div>
               </div>
             </div>
 

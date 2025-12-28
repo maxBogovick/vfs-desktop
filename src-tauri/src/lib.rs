@@ -56,6 +56,8 @@ pub fn run() {
             cancel_operation,
             pause_operation,
             resume_operation,
+            // Directory size calculation
+            calculate_directory_size,
             // System monitoring commands
             get_system_stats
         ])

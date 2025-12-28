@@ -468,6 +468,25 @@ pub fn resume_operation(operation_id: String) -> Result<(), String> {
     }
 }
 
+// ====== Команда для вычисления размера директории ======
+
+#[derive(Serialize)]
+pub struct DirectorySize {
+    total_bytes: u64,
+    total_items: u64,
+}
+
+#[tauri::command]
+pub fn calculate_directory_size(path: String) -> Result<DirectorySize, String> {
+    let (total_bytes, total_items) = calculate_total_size(&[path])
+        .map_err(|e| format!("Failed to calculate directory size: {}", e))?;
+
+    Ok(DirectorySize {
+        total_bytes,
+        total_items,
+    })
+}
+
 // ====== Команды для мониторинга системы ======
 
 #[derive(Serialize)]

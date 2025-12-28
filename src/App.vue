@@ -4,6 +4,7 @@ import Toolbar from './components/Toolbar.vue';
 import Sidebar from './components/Sidebar.vue';
 import FileList from './components/FileList.vue';
 import Preview from './components/Preview.vue';
+import Dashboard from './components/Dashboard.vue';
 import CommandPalette from './components/CommandPalette.vue';
 import ContextMenu from './components/ContextMenu.vue';
 import Notifications from './components/Notifications.vue';
@@ -155,6 +156,20 @@ const handlePreviewResize = (width: number) => {
   previewWidth.value = width;
 };
 
+// Handle dashboard resize
+const handleDashboardResize = (width: number) => {
+  dashboardWidth.value = width;
+};
+
+// Toggle dashboard
+const handleToggleDashboard = () => {
+  showDashboard.value = !showDashboard.value;
+  // Close preview when opening dashboard
+  if (showDashboard.value) {
+    previewFile.value = null;
+  }
+};
+
 const handleBackgroundDrop = async (event: DragEvent) => {
   console.log('[App] Background Drop Detected!'); // DEBUG LOG
 
@@ -206,6 +221,8 @@ const viewMode = ref<ViewMode>('list');
 const isCommandPaletteOpen = ref(false);
 const previewFile = ref<FileItem | null>(null);
 const showSettings = ref(false);
+const showDashboard = ref(false);
+const dashboardWidth = ref(400);
 
 // System stats
 const systemStats = ref({ memory_mb: 0, cpu_percent: 0 });
@@ -229,6 +246,8 @@ const handleItemDoubleClick = (item: FileItem) => {
     navigateTo(pathParts);
   } else {
     previewFile.value = item;
+    // Close dashboard when opening preview
+    showDashboard.value = false;
   }
 };
 
@@ -971,6 +990,7 @@ onMounted(async () => {
         @open-command-palette="() => isCommandPaletteOpen = true"
         @toggle-bookmark="handleToggleBookmark"
         @toggle-panel-mode="togglePanelMode"
+        @toggle-dashboard="handleToggleDashboard"
     />
 
     <!-- Main Content -->
@@ -1024,6 +1044,15 @@ onMounted(async () => {
               @close="previewFile = null"
               @open="fileOps.handleOpenFile"
               @resize="handlePreviewResize"
+          />
+
+          <!-- Dashboard Panel -->
+          <Dashboard
+              v-if="showDashboard"
+              :files="processedFiles"
+              :width="dashboardWidth"
+              @close="showDashboard = false"
+              @resize="handleDashboardResize"
           />
         </div>
       </template>

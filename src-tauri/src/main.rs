@@ -4,8 +4,8 @@
 use llm_utl::api::Scan;
 
 fn main() {
-run();
-//    vfdir_lib::run()
+//run();
+    vfdir_lib::run()
 }
 
 fn run() {
