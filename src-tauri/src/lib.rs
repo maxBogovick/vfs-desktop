@@ -6,6 +6,8 @@ mod error;
 mod commands;
 mod progress;
 mod file_operations;
+#[cfg(feature = "api-server")]
+pub mod file_operations_async;
 pub mod templates;
 
 // Shared application state

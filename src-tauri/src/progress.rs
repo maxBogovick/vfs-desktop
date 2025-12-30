@@ -332,3 +332,33 @@ pub fn emit_progress<R: tauri::Runtime>(
         let _ = app.emit("file-operation-progress", event);
     }
 }
+
+/// Emit прогресс события через WebSocket (для REST API)
+#[cfg(feature = "api-server")]
+pub fn emit_progress_websocket(
+    state: &crate::api_server::state::AppState,
+    tracker: &Arc<ProgressTracker>,
+) {
+    if tracker.should_emit_update() || tracker.is_cancelled() {
+        let event = tracker.get_progress_event();
+
+        // Конвертируем ProgressEvent в WebSocketMessage::Progress
+        let ws_message = crate::api_server::models::WebSocketMessage::Progress {
+            data: crate::api_server::models::ProgressData {
+                operation_id: event.operation_id,
+                operation_type: format!("{:?}", event.operation_type).to_lowercase(),
+                status: format!("{:?}", event.status).to_lowercase(),
+                current_bytes: event.current_bytes,
+                total_bytes: event.total_bytes,
+                current_items: event.current_items,
+                total_items: event.total_items,
+                current_file: event.current_file,
+                speed_bytes_per_sec: event.speed_bytes_per_sec,
+                eta_seconds: event.eta_seconds,
+                error_message: event.error_message,
+            }
+        };
+
+        state.broadcast(ws_message);
+    }
+}

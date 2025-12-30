@@ -74,6 +74,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/files/open", post(handlers::files::open_file))
         .route("/files/reveal", post(handlers::files::reveal_in_finder))
 
+        // File operations with progress (WebSocket updates)
+        .route("/files/copy-with-progress", post(handlers::files::copy_items_with_progress))
+        .route("/files/move-with-progress", post(handlers::files::move_items_with_progress))
+        .route("/files/delete-with-progress", post(handlers::files::delete_items_with_progress))
+
         // Batch operations
         .route("/batch/rename", post(handlers::batch::batch_rename))
         .route("/batch/rename/preview", post(handlers::batch::batch_rename_preview))

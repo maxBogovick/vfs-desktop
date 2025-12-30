@@ -5,7 +5,7 @@
  */
 
 use super::{ApiResult, ApiError};
-use super::models::{FileSystemEntry, SystemStats};
+use super::models::{FileSystemEntry, SystemStats, DirectorySize};
 use crate::api::{RealFileSystem, virtual_fs::VirtualFileSystem};
 use crate::config::FileSystemBackend;
 use crate::core::FileSystem;
@@ -113,11 +113,22 @@ impl SystemService {
     }
 
     /// Calculate total size of directory (recursive)
-    pub fn calculate_directory_size(&self, _path: &str) -> ApiResult<u64> {
-        // TODO: Implement proper directory size calculation
-        tracing::warn!("Directory size calculation not yet implemented");
-        Err(ApiError::OperationFailed {
-            message: "Directory size calculation not yet implemented".to_string(),
+    pub fn calculate_directory_size(&self, path: &str) -> ApiResult<DirectorySize> {
+        use crate::file_operations::calculate_total_size;
+
+        tracing::debug!("Calculating directory size for: {}", path);
+
+        let (total_bytes, total_items) = calculate_total_size(&[path.to_string()])
+            .map_err(|e| {
+                tracing::error!("Failed to calculate directory size: {}", e);
+                ApiError::OperationFailed {
+                    message: format!("Failed to calculate directory size: {}", e),
+                }
+            })?;
+
+        Ok(DirectorySize {
+            total_bytes,
+            total_items,
         })
     }
 }

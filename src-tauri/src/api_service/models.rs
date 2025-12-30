@@ -109,3 +109,11 @@ pub struct SystemStats {
     pub memory_mb: f64,
     pub cpu_percent: f32,
 }
+
+/// Directory Size
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DirectorySize {
+    pub total_bytes: u64,
+    pub total_items: u64,
+}

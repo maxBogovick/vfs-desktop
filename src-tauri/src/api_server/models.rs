@@ -57,7 +57,7 @@ impl ErrorResponse {
 
 // ===== File Operations =====
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListDirectoryQuery {
     pub path: String,
 }
@@ -67,7 +67,7 @@ pub struct ListDirectoryResponse {
     pub files: Vec<FileSystemEntry>,
 }
 
-#[derive(Debug, Deserialize, ToSchema)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct GetFileInfoQuery {
     pub path: String,
 }
@@ -101,6 +101,29 @@ pub struct RenameItemRequest {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteItemsRequest {
     pub paths: Vec<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CopyItemsWithProgressRequest {
+    pub sources: Vec<String>,
+    pub destination: String,
+    #[serde(rename = "operationId")]
+    pub operation_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct MoveItemsWithProgressRequest {
+    pub sources: Vec<String>,
+    pub destination: String,
+    #[serde(rename = "operationId")]
+    pub operation_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct DeleteItemsWithProgressRequest {
+    pub paths: Vec<String>,
+    #[serde(rename = "operationId")]
+    pub operation_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -265,7 +288,8 @@ pub struct AddBookmarkRequest {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RenameBookmarkRequest {
-    pub name: String,
+    #[serde(rename = "newName")]
+    pub new_name: String,
 }
 
 // ===== System =====
@@ -293,7 +317,7 @@ pub struct OpenTerminalRequest {
 
 // ===== WebSocket Messages =====
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 #[serde(tag = "type")]
 pub enum WebSocketMessage {
     #[serde(rename = "progress")]
@@ -302,7 +326,7 @@ pub enum WebSocketMessage {
     FileSystemChange { data: FileSystemChangeData },
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ProgressData {
     #[serde(rename = "operationId")]
     pub operation_id: String,
@@ -314,18 +338,21 @@ pub struct ProgressData {
     #[serde(rename = "totalBytes")]
     pub total_bytes: u64,
     #[serde(rename = "currentItems")]
-    pub current_items: usize,
+    pub current_items: u64,
     #[serde(rename = "totalItems")]
-    pub total_items: usize,
+    pub total_items: u64,
     #[serde(rename = "currentFile")]
     pub current_file: Option<String>,
     #[serde(rename = "speedBytesPerSec")]
     pub speed_bytes_per_sec: f64,
     #[serde(rename = "etaSeconds")]
     pub eta_seconds: Option<f64>,
+    #[serde(rename = "errorMessage")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct FileSystemChangeData {
     pub path: String,
     #[serde(rename = "changeType")]

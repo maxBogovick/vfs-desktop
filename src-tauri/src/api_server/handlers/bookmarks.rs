@@ -11,7 +11,7 @@ use axum::{
 use std::sync::Arc;
 
 use crate::api_server::{models::*, state::AppState};
-use crate::config::APP_CONFIG;
+use crate::api_service::{API, ApiError};
 
 #[utoipa::path(
     get,
@@ -24,27 +24,45 @@ use crate::config::APP_CONFIG;
 pub async fn get_bookmarks(
     State(_state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let config = APP_CONFIG.read().unwrap();
-    Json(BookmarksResponse {
-        bookmarks: config.bookmarks.clone(),
-    })
-    .into_response()
+    match API.bookmarks.get_all() {
+        Ok(bookmarks) => Json(BookmarksResponse { bookmarks }).into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse::operation_failed(err.to_string()))
+        ).into_response()
+    }
 }
 
 pub async fn add_bookmark(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<AddBookmarkRequest>,
 ) -> impl IntoResponse {
-    // TODO: Implement add bookmark
-    StatusCode::NOT_IMPLEMENTED.into_response()
+    match API.bookmarks.add(req.path, req.name) {
+        Ok(bookmark) => (StatusCode::CREATED, Json(bookmark)).into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::ValidationError { .. } => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
+    }
 }
 
 pub async fn remove_bookmark(
     State(_state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
-    // TODO: Implement remove bookmark
-    StatusCode::NOT_IMPLEMENTED.into_response()
+    match API.bookmarks.remove(&id) {
+        Ok(_) => StatusCode::NO_CONTENT.into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::NotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
+    }
 }
 
 pub async fn rename_bookmark(
@@ -52,6 +70,15 @@ pub async fn rename_bookmark(
     Path(id): Path<String>,
     Json(req): Json<RenameBookmarkRequest>,
 ) -> impl IntoResponse {
-    // TODO: Implement rename bookmark
-    StatusCode::NOT_IMPLEMENTED.into_response()
+    match API.bookmarks.rename(&id, req.new_name) {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::NotFound { .. } => StatusCode::NOT_FOUND,
+                ApiError::ValidationError { .. } => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
+    }
 }

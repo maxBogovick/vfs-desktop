@@ -11,8 +11,7 @@ use axum::{
 use std::sync::Arc;
 
 use crate::api_server::{models::*, state::AppState};
-use crate::api::RealFileSystem;
-use crate::core::FileSystem;
+use crate::api_service::{API, ApiError};
 
 #[utoipa::path(
     get,
@@ -25,49 +24,51 @@ use crate::core::FileSystem;
 pub async fn get_home_directory(
     State(_state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-    match fs.get_home_directory() {
+    match API.system.get_home_directory() {
         Ok(path) => Json(HomeDirectoryResponse { path }).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::operation_failed(err.message)),
-        )
-            .into_response(),
+            Json(ErrorResponse::operation_failed(err.to_string())),
+        ).into_response(),
     }
 }
 
 pub async fn get_system_folders(
     State(_state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-    match fs.get_system_folders() {
+    match API.system.get_system_folders() {
         Ok(folders) => Json(SystemFoldersResponse { folders }).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::operation_failed(err.message)),
-        )
-            .into_response(),
+            Json(ErrorResponse::operation_failed(err.to_string())),
+        ).into_response(),
     }
 }
 
 pub async fn get_system_stats(
     State(_state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    // TODO: Implement system stats
-    StatusCode::NOT_IMPLEMENTED.into_response()
+    match API.system.get_stats() {
+        Ok(stats) => Json(stats).into_response(),
+        Err(err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse::operation_failed(err.to_string())),
+        ).into_response(),
+    }
 }
 
 pub async fn open_terminal(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<OpenTerminalRequest>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-    match fs.open_terminal(&req.path) {
+    match API.system.open_terminal(&req.path) {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(err) => (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::operation_failed(err.message)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::BAD_REQUEST,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
 }

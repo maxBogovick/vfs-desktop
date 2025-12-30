@@ -6,6 +6,24 @@
 
 use super::{ApiResult, ApiError};
 use super::models::{BatchRenameRequest, BatchRenameResult, BatchAttributeRequest};
+use crate::progress::{OPERATIONS_MANAGER, ProgressEvent, OperationType, OperationStatus};
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OperationInfo {
+    pub operation_id: String,
+    pub operation_type: OperationType,
+    pub status: OperationStatus,
+    pub current_bytes: u64,
+    pub total_bytes: u64,
+    pub current_items: u64,
+    pub total_items: u64,
+    pub current_file: Option<String>,
+    pub speed_bytes_per_sec: f64,
+    pub eta_seconds: Option<f64>,
+    pub error_message: Option<String>,
+}
 
 pub struct BatchService {}
 
@@ -44,28 +62,64 @@ impl BatchService {
     }
 
     /// Get all batch operations from queue
-    pub fn get_operations(&self) -> ApiResult<Vec<serde_json::Value>> {
-        // TODO: Get from operations manager
+    pub fn get_operations(&self) -> ApiResult<Vec<OperationInfo>> {
         tracing::debug!("Fetching all batch operations");
-        Ok(vec![])
+
+        let trackers = OPERATIONS_MANAGER.get_all_operations();
+        let operations: Vec<OperationInfo> = trackers
+            .iter()
+            .map(|tracker| {
+                let event = tracker.get_progress_event();
+                OperationInfo {
+                    operation_id: event.operation_id,
+                    operation_type: event.operation_type,
+                    status: event.status,
+                    current_bytes: event.current_bytes,
+                    total_bytes: event.total_bytes,
+                    current_items: event.current_items,
+                    total_items: event.total_items,
+                    current_file: event.current_file,
+                    speed_bytes_per_sec: event.speed_bytes_per_sec,
+                    eta_seconds: event.eta_seconds,
+                    error_message: event.error_message,
+                }
+            })
+            .collect();
+
+        Ok(operations)
     }
 
     /// Get specific operation by ID
-    pub fn get_operation(&self, operation_id: &str) -> ApiResult<serde_json::Value> {
-        // TODO: Get from operations manager
+    pub fn get_operation(&self, operation_id: &str) -> ApiResult<OperationInfo> {
         tracing::debug!("Fetching operation: {}", operation_id);
-        Err(ApiError::NotFound {
-            resource: format!("Operation '{}'", operation_id),
+
+        let tracker = OPERATIONS_MANAGER.get_operation(operation_id)
+            .ok_or_else(|| ApiError::NotFound {
+                resource: format!("Operation '{}'", operation_id),
+            })?;
+
+        let event = tracker.get_progress_event();
+        Ok(OperationInfo {
+            operation_id: event.operation_id,
+            operation_type: event.operation_type,
+            status: event.status,
+            current_bytes: event.current_bytes,
+            total_bytes: event.total_bytes,
+            current_items: event.current_items,
+            total_items: event.total_items,
+            current_file: event.current_file,
+            speed_bytes_per_sec: event.speed_bytes_per_sec,
+            eta_seconds: event.eta_seconds,
+            error_message: event.error_message,
         })
     }
 
     /// Cancel running or pending operation
     pub fn cancel_operation(&self, operation_id: &str) -> ApiResult<()> {
-        // TODO: Cancel via operations manager
         tracing::info!("Cancelling operation: {}", operation_id);
-        Err(ApiError::OperationFailed {
-            message: "Operation cancellation not yet implemented".to_string(),
-        })
+
+        OPERATIONS_MANAGER.cancel_operation(operation_id);
+        Ok(())
     }
 
     /// Retry failed operation

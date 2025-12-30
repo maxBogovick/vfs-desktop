@@ -14,8 +14,7 @@ use crate::api_server::{
     models::*,
     state::AppState,
 };
-use crate::api::RealFileSystem;
-use crate::core::FileSystem;
+use crate::api_service::{API, ApiError};
 
 /// List directory contents
 #[utoipa::path(
@@ -32,15 +31,15 @@ pub async fn list_directory(
     State(_state): State<Arc<AppState>>,
     Query(query): Query<ListDirectoryQuery>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    match fs.read_directory(&query.path) {
+    match API.files.list_directory(&query.path) {
         Ok(files) => Json(ListDirectoryResponse { files }).into_response(),
-        Err(err) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::file_not_found(&query.path)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
 }
 
@@ -59,15 +58,15 @@ pub async fn get_file_info(
     State(_state): State<Arc<AppState>>,
     Query(query): Query<GetFileInfoQuery>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    match fs.get_file_info(&query.path) {
+    match API.files.get_file_info(&query.path) {
         Ok(info) => Json(info).into_response(),
-        Err(err) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::file_not_found(&query.path)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
 }
 
@@ -86,15 +85,16 @@ pub async fn create_folder(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<CreateFolderRequest>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    match fs.create_folder(&req.path, &req.name) {
+    match API.files.create_folder(&req.path, &req.name) {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(err) => (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::operation_failed(err.message)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::ValidationError { .. } => StatusCode::BAD_REQUEST,
+                ApiError::AlreadyExists { .. } => StatusCode::CONFLICT,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
 }
 
@@ -113,15 +113,16 @@ pub async fn copy_items(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<CopyItemsRequest>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    match fs.copy_items(&req.sources, &req.destination) {
+    match API.files.copy_items(&req.sources, &req.destination) {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(err) => (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::operation_failed(err.message)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::ValidationError { .. } => StatusCode::BAD_REQUEST,
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
 }
 
@@ -140,15 +141,16 @@ pub async fn move_items(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<MoveItemsRequest>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    match fs.move_items(&req.sources, &req.destination) {
+    match API.files.move_items(&req.sources, &req.destination) {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(err) => (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::operation_failed(err.message)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::ValidationError { .. } => StatusCode::BAD_REQUEST,
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
 }
 
@@ -167,36 +169,45 @@ pub async fn rename_item(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<RenameItemRequest>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    match fs.rename_item(&req.old_path, &req.new_name) {
+    match API.files.rename_item(&req.old_path, &req.new_name) {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(err) => (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::operation_failed(err.message)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::ValidationError { .. } => StatusCode::BAD_REQUEST,
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
 }
 
 /// Delete files/folders
+#[utoipa::path(
+    delete,
+    path = "/api/v1/files",
+    request_body = DeleteItemsRequest,
+    responses(
+        (status = 200, description = "Items deleted successfully"),
+        (status = 400, description = "Delete failed", body = ErrorResponse),
+    ),
+    tag = "files"
+)]
 pub async fn delete_items(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<DeleteItemsRequest>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    for path in &req.paths {
-        if let Err(err) = fs.delete_item(path) {
-            return (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::operation_failed(err.message)),
-            )
-                .into_response();
+    match API.files.delete_items(&req.paths) {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::ValidationError { .. } => StatusCode::BAD_REQUEST,
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
         }
     }
-
-    StatusCode::OK.into_response()
 }
 
 /// Read file content
@@ -204,15 +215,15 @@ pub async fn read_file_content(
     State(_state): State<Arc<AppState>>,
     Query(query): Query<ReadFileContentQuery>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    match fs.read_file_content(&query.path, query.max_size) {
+    match API.files.read_file_content(&query.path, query.max_size) {
         Ok(content) => Json(ReadFileContentResponse { content }).into_response(),
-        Err(err) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::file_not_found(&query.path)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
 }
 
@@ -221,15 +232,15 @@ pub async fn open_file(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<OpenFileRequest>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    match fs.open_file(&req.path) {
+    match API.files.open_file(&req.path) {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(err) => (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::operation_failed(err.message)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
 }
 
@@ -238,14 +249,150 @@ pub async fn reveal_in_finder(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<OpenFileRequest>,
 ) -> impl IntoResponse {
-    let fs = RealFileSystem::new();
-
-    match fs.reveal_in_finder(&req.path) {
+    match API.files.reveal_in_finder(&req.path) {
         Ok(_) => StatusCode::OK.into_response(),
-        Err(err) => (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::operation_failed(err.message)),
-        )
-            .into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
     }
+}
+
+/// Copy items with progress (WebSocket updates)
+pub async fn copy_items_with_progress(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<CopyItemsWithProgressRequest>,
+) -> impl IntoResponse {
+    use crate::file_operations::calculate_total_size;
+    use crate::progress::{OPERATIONS_MANAGER, OperationType};
+    use uuid::Uuid;
+
+    let operation_id = req.operation_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    // Calculate total size
+    let (total_bytes, total_items) = match calculate_total_size(&req.sources) {
+        Ok(size) => size,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::operation_failed(format!("Failed to calculate size: {}", e)))
+            ).into_response();
+        }
+    };
+
+    // Create operation tracker
+    let tracker = OPERATIONS_MANAGER.create_operation(
+        operation_id.clone(),
+        OperationType::Copy,
+        total_bytes,
+        total_items,
+    );
+
+    // Spawn async task
+    let state_clone = state.clone();
+    let sources = req.sources.clone();
+    let destination = req.destination.clone();
+
+    tokio::spawn(async move {
+        use crate::file_operations_async::copy_items_with_progress_async;
+        let _ = copy_items_with_progress_async(
+            sources,
+            destination,
+            tracker,
+            state_clone,
+        ).await;
+    });
+
+    Json(serde_json::json!({ "operationId": operation_id })).into_response()
+}
+
+/// Move items with progress (WebSocket updates)
+pub async fn move_items_with_progress(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<MoveItemsWithProgressRequest>,
+) -> impl IntoResponse {
+    use crate::file_operations::calculate_total_size;
+    use crate::progress::{OPERATIONS_MANAGER, OperationType};
+    use uuid::Uuid;
+
+    let operation_id = req.operation_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    let (total_bytes, total_items) = match calculate_total_size(&req.sources) {
+        Ok(size) => size,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::operation_failed(format!("Failed to calculate size: {}", e)))
+            ).into_response();
+        }
+    };
+
+    let tracker = OPERATIONS_MANAGER.create_operation(
+        operation_id.clone(),
+        OperationType::Move,
+        total_bytes,
+        total_items,
+    );
+
+    let state_clone = state.clone();
+    let sources = req.sources.clone();
+    let destination = req.destination.clone();
+
+    tokio::spawn(async move {
+        use crate::file_operations_async::move_items_with_progress_async;
+        let _ = move_items_with_progress_async(
+            sources,
+            destination,
+            tracker,
+            state_clone,
+        ).await;
+    });
+
+    Json(serde_json::json!({ "operationId": operation_id })).into_response()
+}
+
+/// Delete items with progress (WebSocket updates)
+pub async fn delete_items_with_progress(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<DeleteItemsWithProgressRequest>,
+) -> impl IntoResponse {
+    use crate::file_operations::calculate_total_size;
+    use crate::progress::{OPERATIONS_MANAGER, OperationType};
+    use uuid::Uuid;
+
+    let operation_id = req.operation_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+
+    let (total_bytes, total_items) = match calculate_total_size(&req.paths) {
+        Ok(size) => size,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse::operation_failed(format!("Failed to calculate size: {}", e)))
+            ).into_response();
+        }
+    };
+
+    let tracker = OPERATIONS_MANAGER.create_operation(
+        operation_id.clone(),
+        OperationType::Delete,
+        total_bytes,
+        total_items,
+    );
+
+    let state_clone = state.clone();
+    let paths = req.paths.clone();
+
+    tokio::spawn(async move {
+        use crate::file_operations_async::delete_items_with_progress_async;
+        let _ = delete_items_with_progress_async(
+            paths,
+            tracker,
+            state_clone,
+        ).await;
+    });
+
+    Json(serde_json::json!({ "operationId": operation_id })).into_response()
 }

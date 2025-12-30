@@ -39,6 +39,7 @@ impl From<&str> for FileSystemError {
 /// Запись файловой системы (файл или директория)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[cfg_attr(feature = "api-server", derive(utoipa::ToSchema))]
 pub struct FileSystemEntry {
     pub path: String,
     pub name: String,
