@@ -7,7 +7,30 @@ mod commands;
 mod progress;
 mod file_operations;
 
+// Shared application state
+pub mod state;
+
+// Universal API Service Layer (business logic)
+pub mod api_service;
+
+// REST API Server (optional, for standalone mode)
+#[cfg(feature = "api-server")]
+pub mod api_server;
+
 use commands::*;
+
+// Initialize tracing on library load
+pub fn init_tracing() {
+    use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "vfdir=debug,tower_http=debug,axum=trace".into()),
+        )
+        .with(tracing_subscriber::fmt::layer())
+        .init();
+}
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
@@ -62,7 +85,10 @@ pub fn run() {
             get_system_stats,
             // Conflict resolution commands
             check_file_conflict,
-            copy_file_with_custom_name
+            copy_file_with_custom_name,
+            // Batch operations commands
+            batch_change_attributes,
+            validate_batch_rename
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

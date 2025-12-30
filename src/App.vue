@@ -15,6 +15,9 @@ import InputDialog from './components/InputDialog.vue';
 import Settings from './components/Settings.vue';
 import OperationsProgress from './components/OperationsProgress.vue';
 import DualPanelContainer from './components/DualPanelContainer.vue';
+import BatchRenameDialog from './components/BatchRenameDialog.vue';
+import BatchAttributeDialog from './components/BatchAttributeDialog.vue';
+import BatchOperationsQueue from './components/BatchOperationsQueue.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useNavigation } from './composables/useNavigation';
@@ -33,9 +36,10 @@ import { useDualPanel, getActivePanelMethods } from './composables/useDualPanel'
 import { useContextMenu } from './composables/useContextMenu';
 import { useGrouping } from './composables/useGrouping';
 import { useConflictResolution } from './composables/useConflictResolution';
+import { useBatchOperations } from './composables/useBatchOperations';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
-import type { FileItem, ViewMode } from './types';
+import type { FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange } from './types';
 
 // File System
 const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory } = useFileSystem();
@@ -229,6 +233,19 @@ const { contextMenu, showContextMenu, closeContextMenu } = useContextMenu();
 // Grouping
 const { groupBy, groupByOptions, groupFiles } = useGrouping();
 
+// Batch Operations (with auto-refresh callback)
+const { queueBatchRename, queueBatchAttributeChange, hasOperations } = useBatchOperations(async () => {
+  // Auto-refresh directory after operation completes
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    if (methods) {
+      await methods.refreshCurrentDirectory();
+    }
+  } else {
+    await refreshCurrentDirectory();
+  }
+});
+
 // Local state
 const viewMode = ref<ViewMode>('list');
 const isCommandPaletteOpen = ref(false);
@@ -236,6 +253,10 @@ const previewFile = ref<FileItem | null>(null);
 const showSettings = ref(false);
 const showDashboard = ref(false);
 const dashboardWidth = ref(400);
+const showBatchRenameDialog = ref(false);
+const showBatchAttributeDialog = ref(false);
+const showBatchQueue = ref(false);
+const batchOperationFiles = ref<FileItem[]>([]);
 
 // System stats
 const systemStats = ref({ memory_mb: 0, cpu_percent: 0 });
@@ -827,6 +848,77 @@ const contextMenuHandlers = {
       }
     }
   },
+  batchRename: () => {
+    if (isDualMode.value) {
+      const methods = getActivePanelMethods();
+      if (methods) {
+        const selected = methods.getSelectedItems();
+        if (selected.length > 0) {
+          batchOperationFiles.value = selected;
+          showBatchRenameDialog.value = true;
+        }
+      }
+    } else {
+      const selected = getSelected();
+      if (selected.length > 0) {
+        batchOperationFiles.value = selected;
+        showBatchRenameDialog.value = true;
+      }
+    }
+  },
+  batchAttributes: () => {
+    if (isDualMode.value) {
+      const methods = getActivePanelMethods();
+      if (methods) {
+        const selected = methods.getSelectedItems();
+        if (selected.length > 0) {
+          batchOperationFiles.value = selected;
+          showBatchAttributeDialog.value = true;
+        }
+      }
+    } else {
+      const selected = getSelected();
+      if (selected.length > 0) {
+        batchOperationFiles.value = selected;
+        showBatchAttributeDialog.value = true;
+      }
+    }
+  },
+};
+
+// Batch operations handlers
+const handleBatchRenameConfirm = async (config: BatchRenameConfig) => {
+  try {
+    await queueBatchRename(batchOperationFiles.value, config);
+    showBatchRenameDialog.value = false;
+    batchOperationFiles.value = [];
+    showBatchQueue.value = true;
+    clearSelection();
+    // Refresh will happen automatically after operation completes
+  } catch (err) {
+    console.error('Batch rename failed:', err);
+    // Show error notification
+  }
+};
+
+const handleBatchAttributeConfirm = async (changes: BatchAttributeChange) => {
+  try {
+    await queueBatchAttributeChange(batchOperationFiles.value, changes);
+    showBatchAttributeDialog.value = false;
+    batchOperationFiles.value = [];
+    showBatchQueue.value = true;
+    clearSelection();
+    // Refresh will happen automatically after operation completes
+  } catch (err) {
+    console.error('Batch attribute change failed:', err);
+    // Show error notification
+  }
+};
+
+const handleBatchDialogCancel = () => {
+  showBatchRenameDialog.value = false;
+  showBatchAttributeDialog.value = false;
+  batchOperationFiles.value = [];
 };
 
 // Watch current path and load directory
@@ -1091,6 +1183,7 @@ onMounted(async () => {
         :x="contextMenu.x"
         :y="contextMenu.y"
         :item="contextMenu.item"
+        :selected-count="selectedCount"
         @open="contextMenuHandlers.open"
         @copy="contextMenuHandlers.copy"
         @cut="contextMenuHandlers.cut"
@@ -1100,6 +1193,8 @@ onMounted(async () => {
         @add-to-favorites="contextMenuHandlers.addToFavorites"
         @open-terminal="contextMenuHandlers.openTerminal"
         @properties="contextMenuHandlers.properties"
+        @batch-rename="contextMenuHandlers.batchRename"
+        @batch-attributes="contextMenuHandlers.batchAttributes"
         @close="closeContextMenu"
     />
 
@@ -1148,6 +1243,39 @@ onMounted(async () => {
         @close="showSettings = false"
     />
 
+    <!-- Batch Rename Dialog -->
+    <BatchRenameDialog
+        :is-open="showBatchRenameDialog"
+        :files="batchOperationFiles"
+        @confirm="handleBatchRenameConfirm"
+        @cancel="handleBatchDialogCancel"
+    />
+
+    <!-- Batch Attribute Dialog -->
+    <BatchAttributeDialog
+        :is-open="showBatchAttributeDialog"
+        :files="batchOperationFiles"
+        @confirm="handleBatchAttributeConfirm"
+        @cancel="handleBatchDialogCancel"
+    />
+
+    <!-- Batch Operations Queue -->
+    <div
+        v-if="showBatchQueue"
+        class="fixed bottom-5 right-5 w-[500px] h-[400px] bg-white border border-gray-300 rounded-lg shadow-2xl overflow-hidden z-40"
+    >
+      <div class="flex items-center justify-between p-2 border-b border-gray-300 bg-gray-50">
+        <h3 class="font-semibold text-sm">Batch Operations</h3>
+        <button
+          @click="showBatchQueue = false"
+          class="text-gray-500 hover:text-gray-700 text-xl leading-none"
+        >
+          ×
+        </button>
+      </div>
+      <BatchOperationsQueue />
+    </div>
+
     <!-- File Operations Progress -->
     <OperationsProgress />
 
@@ -1157,6 +1285,13 @@ onMounted(async () => {
       <span v-if="selectedCount > 0" class="ml-4">{{ selectedCount }} selected</span>
       <span v-if="hasActiveFilters" class="ml-4 text-blue-600">🔍 Filters active</span>
       <span v-if="isDragging" class="ml-4 text-orange-600">📋 Dragging {{ draggedItems.length }} item(s)...</span>
+      <button
+        v-if="hasOperations"
+        @click="showBatchQueue = !showBatchQueue"
+        class="ml-4 text-blue-600 hover:text-blue-700 cursor-pointer"
+      >
+        📋 Batch Operations
+      </button>
       <span class="ml-auto text-[#555]">
         RAM: {{ systemStats.memory_mb.toFixed(1) }} MB
         <span class="ml-3">CPU: {{ systemStats.cpu_percent.toFixed(1) }}%</span>

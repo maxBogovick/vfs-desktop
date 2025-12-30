@@ -216,3 +216,171 @@ export interface ConflictResolution {
   newName?: string; // For 'rename' action
   applyToAll: boolean;
 }
+
+// ===== Batch Operations Types =====
+
+// Batch Rename Pattern Types
+export type RenamePatternType = 'prefix' | 'suffix' | 'replace' | 'regex' | 'numbering' | 'case';
+export type CaseChangeType = 'uppercase' | 'lowercase' | 'titlecase' | 'camelcase' | 'snakecase' | 'kebabcase';
+
+export interface RenamePattern {
+  type: RenamePatternType;
+  enabled: boolean;
+}
+
+export interface PrefixPattern extends RenamePattern {
+  type: 'prefix';
+  text: string;
+}
+
+export interface SuffixPattern extends RenamePattern {
+  type: 'suffix';
+  text: string;
+  beforeExtension: boolean; // If true, add before file extension
+}
+
+export interface ReplacePattern extends RenamePattern {
+  type: 'replace';
+  searchText: string;
+  replaceText: string;
+  caseSensitive: boolean;
+  wholeWord: boolean;
+}
+
+export interface RegexPattern extends RenamePattern {
+  type: 'regex';
+  pattern: string;
+  replacement: string;
+  flags: string; // 'g', 'i', 'gi', etc.
+}
+
+export interface NumberingPattern extends RenamePattern {
+  type: 'numbering';
+  startNumber: number;
+  increment: number;
+  padding: number; // Zero padding (e.g., 3 -> 001, 002, 003)
+  position: 'prefix' | 'suffix' | 'replace';
+  separator: string; // e.g., '-', '_', ' '
+}
+
+export interface CasePattern extends RenamePattern {
+  type: 'case';
+  caseType: CaseChangeType;
+}
+
+export type BatchRenamePattern =
+  | PrefixPattern
+  | SuffixPattern
+  | ReplacePattern
+  | RegexPattern
+  | NumberingPattern
+  | CasePattern;
+
+export interface RenamePreviewItem {
+  originalPath: string;
+  originalName: string;
+  newName: string;
+  hasError: boolean;
+  errorMessage?: string;
+  fileItem: FileItem;
+}
+
+export interface BatchRenameConfig {
+  patterns: BatchRenamePattern[];
+  applyToFolders: boolean;
+  applyToFiles: boolean;
+  preserveExtension: boolean; // Don't modify file extensions in patterns
+}
+
+// Batch Attribute Change Types
+export interface PermissionsChange {
+  readable?: boolean;
+  writable?: boolean;
+  executable?: boolean;
+  recursive: boolean; // Apply to subdirectories
+}
+
+export interface DateChange {
+  modified?: number; // Unix timestamp
+  created?: number;
+  accessed?: number;
+}
+
+export interface TagsChange {
+  operation: 'add' | 'remove' | 'replace';
+  tags: string[];
+}
+
+export interface BatchAttributeChange {
+  permissions?: PermissionsChange;
+  dates?: DateChange;
+  tags?: TagsChange;
+}
+
+export interface AttributePreviewItem {
+  path: string;
+  name: string;
+  currentAttributes: {
+    permissions?: FileItem['permissions'];
+    modified?: string;
+    created?: string;
+    tags?: string[];
+  };
+  newAttributes: {
+    permissions?: FileItem['permissions'];
+    modified?: string;
+    created?: string;
+    tags?: string[];
+  };
+  fileItem: FileItem;
+}
+
+// Batch Operations Queue Types
+export type BatchOperationType = 'rename' | 'attribute_change';
+export type QueuedOperationStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface QueuedBatchOperation {
+  id: string;
+  type: BatchOperationType;
+  status: QueuedOperationStatus;
+  itemsCount: number;
+  processedCount: number;
+  failedCount: number;
+  createdAt: number;
+  startedAt?: number;
+  completedAt?: number;
+  errorMessage?: string;
+  config: BatchRenameConfig | BatchAttributeChange;
+  items: string[]; // File paths
+  results?: BatchOperationResult[];
+}
+
+export interface BatchOperationResult {
+  path: string;
+  success: boolean;
+  errorMessage?: string;
+  originalName?: string; // For rename operations
+  newName?: string;
+}
+
+export interface BatchOperationProgress {
+  operationId: string;
+  status: QueuedOperationStatus;
+  currentItem: number;
+  totalItems: number;
+  currentFile: string | null;
+  failedItems: string[];
+}
+
+// Validation Types
+export interface ValidationError {
+  path: string;
+  name: string;
+  error: string;
+}
+
+export interface BatchValidationResult {
+  isValid: boolean;
+  errors: ValidationError[];
+  warnings: ValidationError[];
+}

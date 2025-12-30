@@ -1,314 +1,146 @@
-use crate::api::virtual_fs::VirtualFileSystem;
-use crate::api::RealFileSystem;
-use crate::config::{AppConfig, Bookmark, FileSystemBackend, UIState};
-use crate::core::{FileSystem, FileSystemEntry};
+use crate::api_service::API;
+use crate::config::{AppConfig, Bookmark, UIState};
+use crate::core::FileSystemEntry;
 use crate::progress::{emit_progress, OperationType, OPERATIONS_MANAGER};
 use crate::file_operations::{
     calculate_total_size, copy_items_with_progress, delete_items_with_progress,
     move_items_with_progress,
 };
-use once_cell::sync::Lazy;
-use std::sync::atomic::Ordering;
-use std::sync::{Arc, RwLock};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter, Runtime};
-use sysinfo::{System, Pid};
 use serde::Serialize;
-
-// Глобальное состояние конфигурации
-static APP_CONFIG: Lazy<Arc<RwLock<AppConfig>>> = Lazy::new(|| {
-    let config = AppConfig::load().unwrap_or_default();
-    Arc::new(RwLock::new(config))
-});
-
-// Enum для хранения разных типов файловых систем
-enum FileSystemInstance {
-    Real(RealFileSystem),
-    Virtual(VirtualFileSystem),
-}
-
-impl FileSystemInstance {
-    fn as_trait(&self) -> &dyn FileSystem {
-        match self {
-            FileSystemInstance::Real(fs) => fs,
-            FileSystemInstance::Virtual(fs) => fs,
-        }
-    }
-}
-
-// Получить экземпляр файловой системы на основе конфига
-fn get_filesystem() -> FileSystemInstance {
-    let config = APP_CONFIG.read().unwrap();
-
-    match config.filesystem_backend {
-        FileSystemBackend::Real => FileSystemInstance::Real(RealFileSystem::new()),
-        FileSystemBackend::Virtual => {
-            let virtual_fs = VirtualFileSystem::new("/Users/maxim/Projects/Rust/vfdir/out/fs.json")
-                .unwrap_or_else(|_| VirtualFileSystem::new("/tmp/vfdir_fs.json").unwrap());
-            FileSystemInstance::Virtual(virtual_fs)
-        }
-    }
-}
 
 // ====== Команды для работы с конфигурацией ======
 
 #[tauri::command]
 pub fn get_config() -> Result<AppConfig, String> {
-    let config = APP_CONFIG.read().unwrap();
-    Ok(config.clone())
+    API.config.get().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn update_config(new_config: AppConfig) -> Result<(), String> {
-    // Сохранить в файл
-    new_config.save()?;
-
-    // Обновить в памяти
-    let mut config = APP_CONFIG.write().unwrap();
-    *config = new_config;
-
-    Ok(())
+    API.config.update(new_config).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn set_filesystem_backend(backend: String) -> Result<(), String> {
-    let backend_enum = match backend.as_str() {
-        "real" => FileSystemBackend::Real,
-        "virtual" => FileSystemBackend::Virtual,
-        _ => return Err("Invalid backend type. Use 'real' or 'virtual'".to_string()),
-    };
-
-    let mut config = APP_CONFIG.write().unwrap();
-    config.filesystem_backend = backend_enum;
-    config.save()?;
-
-    Ok(())
+    API.config.set_filesystem_backend(&backend).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn read_directory(path: String) -> Result<Vec<FileSystemEntry>, String> {
-    let fs = get_filesystem();
-    fs.as_trait().read_directory(&path).map_err(|e| e.message)
+    API.files.list_directory(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn delete_item(path: String) -> Result<(), String> {
-    let fs = get_filesystem();
-    fs.as_trait().delete_item(&path).map_err(|e| e.message)
+    API.files.delete_item(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn rename_item(old_path: String, new_name: String) -> Result<(), String> {
-    let fs = get_filesystem();
-    fs.as_trait()
-        .rename_item(&old_path, &new_name)
-        .map_err(|e| e.message)
+    API.files.rename_item(&old_path, &new_name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn create_folder(path: String, name: String) -> Result<(), String> {
-    let fs = get_filesystem();
-    fs.as_trait()
-        .create_folder(&path, &name)
-        .map_err(|e| e.message)
+    API.files.create_folder(&path, &name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn copy_items(sources: Vec<String>, destination: String) -> Result<(), String> {
-    let fs = get_filesystem();
-    fs.as_trait()
-        .copy_items(&sources, &destination)
-        .map_err(|e| e.message)
+    API.files.copy_items(&sources, &destination).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn move_items(sources: Vec<String>, destination: String) -> Result<(), String> {
-    let fs = get_filesystem();
-    fs.as_trait()
-        .move_items(&sources, &destination)
-        .map_err(|e| e.message)
+    API.files.move_items(&sources, &destination).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn get_home_directory() -> Result<String, String> {
-    let fs = get_filesystem();
-    fs.as_trait().get_home_directory().map_err(|e| e.message)
+    API.system.get_home_directory().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn get_file_info(path: String) -> Result<FileSystemEntry, String> {
-    let fs = get_filesystem();
-    fs.as_trait().get_file_info(&path).map_err(|e| e.message)
+    API.files.get_file_info(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn open_file(path: String) -> Result<(), String> {
-    let fs = get_filesystem();
-    fs.as_trait().open_file(&path).map_err(|e| e.message)
+    API.files.open_file(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn reveal_in_finder(path: String) -> Result<(), String> {
-    let fs = get_filesystem();
-    fs.as_trait().reveal_in_finder(&path).map_err(|e| e.message)
+    API.files.reveal_in_finder(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn get_system_folders() -> Result<Vec<FileSystemEntry>, String> {
-    let fs = get_filesystem();
-    fs.as_trait().get_system_folders().map_err(|e| e.message)
+    API.system.get_system_folders().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn read_file_content(path: String, max_size: Option<u64>) -> Result<String, String> {
-    let fs = get_filesystem();
-    fs.as_trait()
-        .read_file_content(&path, max_size)
-        .map_err(|e| e.message)
+    API.files.read_file_content(&path, max_size).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn normalize_path(path: String) -> Result<String, String> {
-    let fs = get_filesystem();
-    fs.as_trait().normalize_path(&path).map_err(|e| e.message)
+    API.files.normalize_path(&path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn get_path_suggestions(partial_path: String) -> Result<Vec<String>, String> {
-    let fs = get_filesystem();
-    fs.as_trait()
-        .get_path_suggestions(&partial_path)
-        .map_err(|e| e.message)
+    API.files.get_path_suggestions(&partial_path).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn open_terminal(path: String) -> Result<(), String> {
-    let fs = get_filesystem();
-    fs.as_trait().open_terminal(&path).map_err(|e| e.message)
+    API.system.open_terminal(&path).map_err(|e| e.to_string())
 }
 
 // ====== Команды для работы с закладками ======
 
 #[tauri::command]
 pub fn get_bookmarks() -> Result<Vec<Bookmark>, String> {
-    let config = APP_CONFIG.read().unwrap();
-    Ok(config.bookmarks.clone())
+    API.bookmarks.get_all().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn add_bookmark(path: String, name: Option<String>) -> Result<Bookmark, String> {
-    let mut config = APP_CONFIG.write().unwrap();
-
-    // Проверить, не существует ли уже закладка с таким путем
-    if config.bookmarks.iter().any(|b| b.path == path) {
-        return Err("Bookmark with this path already exists".to_string());
-    }
-
-    // Создать имя из пути, если не указано
-    let bookmark_name = name.unwrap_or_else(|| {
-        std::path::Path::new(&path)
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("Bookmark")
-            .to_string()
-    });
-
-    // Получить текущее время
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs();
-
-    // Создать уникальный ID
-    let id = format!("bookmark_{}", timestamp);
-
-    let bookmark = Bookmark {
-        id: id.clone(),
-        name: bookmark_name,
-        path: path.clone(),
-        created_at: timestamp,
-    };
-
-    config.bookmarks.push(bookmark.clone());
-
-    // Сохранить конфигурацию
-    config.save()?;
-
-    Ok(bookmark)
+    API.bookmarks.add(path, name).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn remove_bookmark(id: String) -> Result<(), String> {
-    let mut config = APP_CONFIG.write().unwrap();
-
-    let initial_len = config.bookmarks.len();
-    config.bookmarks.retain(|b| b.id != id);
-
-    if config.bookmarks.len() == initial_len {
-        return Err("Bookmark not found".to_string());
-    }
-
-    config.save()?;
-    Ok(())
+    API.bookmarks.remove(&id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn rename_bookmark(id: String, new_name: String) -> Result<(), String> {
-    let mut config = APP_CONFIG.write().unwrap();
-
-    let bookmark = config
-        .bookmarks
-        .iter_mut()
-        .find(|b| b.id == id)
-        .ok_or_else(|| "Bookmark not found".to_string())?;
-
-    bookmark.name = new_name;
-
-    config.save()?;
-    Ok(())
+    API.bookmarks.rename(&id, new_name).map_err(|e| e.to_string())
 }
 
 // ====== Команды для работы с UI состоянием ======
 
 #[tauri::command]
 pub fn get_ui_state() -> Result<UIState, String> {
-    let config = APP_CONFIG.read().unwrap();
-    let ui_state = config.ui_state.clone();
+    let ui_state = API.config.get_ui_state().map_err(|e| e.to_string())?;
 
-    println!("[get_ui_state] Returning UI state:");
-    println!("  - tabs: {}", ui_state.tabs.len());
-    println!("  - active_tab_id: {:?}", ui_state.active_tab_id);
-    println!("  - last_path: {:?}", ui_state.last_path);
-    println!("  - sidebar_width: {}", ui_state.sidebar_width);
-    println!("  - sidebar expanded_folders: {}", ui_state.sidebar.expanded_folders.len());
-    println!("  - sidebar quick_access: {}", ui_state.sidebar.quick_access_expanded);
-    println!("  - sidebar folder_tree: {}", ui_state.sidebar.folder_tree_expanded);
-    println!("  - sidebar favorites: {}", ui_state.sidebar.favorites_expanded);
+    tracing::debug!("Returning UI state: {} tabs, active_tab_id={:?}",
+        ui_state.tabs.len(), ui_state.active_tab_id);
 
     Ok(ui_state)
 }
 
 #[tauri::command]
 pub fn save_ui_state(ui_state: UIState) -> Result<(), String> {
-    println!("[save_ui_state] Received UI state:");
-    println!("  - tabs: {}", ui_state.tabs.len());
-    println!("  - active_tab_id: {:?}", ui_state.active_tab_id);
-    println!("  - last_path: {:?}", ui_state.last_path);
-    println!("  - sidebar_width: {}", ui_state.sidebar_width);
-    println!("  - sidebar expanded_folders: {}", ui_state.sidebar.expanded_folders.len());
-    println!("  - sidebar quick_access: {}", ui_state.sidebar.quick_access_expanded);
-    println!("  - sidebar folder_tree: {}", ui_state.sidebar.folder_tree_expanded);
-    println!("  - sidebar favorites: {}", ui_state.sidebar.favorites_expanded);
+    tracing::debug!("Saving UI state: {} tabs, active_tab_id={:?}",
+        ui_state.tabs.len(), ui_state.active_tab_id);
 
-    let mut config = APP_CONFIG.write().unwrap();
-    config.ui_state = ui_state;
-
-    let config_path = crate::config::AppConfig::config_path()?;
-    println!("[save_ui_state] Saving to file: {:?}", config_path);
-    config.save()?;
-    println!("[save_ui_state] ✅ Saved successfully to {:?}", config_path);
-
-    Ok(())
+    API.config.save_ui_state(ui_state).map_err(|e| e.to_string())
 }
 
 // ====== Команды для операций с прогрессом ======
@@ -478,6 +310,8 @@ pub struct DirectorySize {
 
 #[tauri::command]
 pub fn calculate_directory_size(path: String) -> Result<DirectorySize, String> {
+    // For now, use the file_operations helper directly
+    // TODO: Move to API service when implemented
     let (total_bytes, total_items) = calculate_total_size(&[path])
         .map_err(|e| format!("Failed to calculate directory size: {}", e))?;
 
@@ -489,35 +323,12 @@ pub fn calculate_directory_size(path: String) -> Result<DirectorySize, String> {
 
 // ====== Команды для мониторинга системы ======
 
-#[derive(Serialize)]
-pub struct SystemStats {
-    memory_mb: f64,
-    cpu_percent: f32,
-}
+use crate::api_service::models::SystemStats;
 
 /// Получить статистику потребления ресурсов приложением
 #[tauri::command]
 pub fn get_system_stats() -> Result<SystemStats, String> {
-    let mut sys = System::new_all();
-
-    // Получаем PID текущего процесса
-    let pid = Pid::from_u32(std::process::id());
-
-    // Обновляем данные
-    sys.refresh_all();
-
-    // Получаем информацию о процессе
-    if let Some(process) = sys.process(pid) {
-        let memory_mb = process.memory() as f64 / 1024.0 / 1024.0;
-        let cpu_percent = process.cpu_usage();
-
-        Ok(SystemStats {
-            memory_mb,
-            cpu_percent,
-        })
-    } else {
-        Err("Failed to get process information".to_string())
-    }
+    API.system.get_stats().map_err(|e| e.to_string())
 }
 
 // ====== Conflict Resolution Commands ======
@@ -607,8 +418,181 @@ pub fn copy_file_with_custom_name(
     destination_dir: String,
     new_name: String,
 ) -> Result<(), String> {
-    let fs = get_filesystem();
-    fs.as_trait()
+    API.files
         .copy_with_custom_name(&source_path, &destination_dir, &new_name)
-        .map_err(|e| e.message)
+        .map_err(|e| e.to_string())
+}
+
+// ====== Batch Operations Commands ======
+
+use serde::Deserialize;
+
+#[derive(Debug, Deserialize)]
+pub struct PermissionsChange {
+    pub readable: Option<bool>,
+    pub writable: Option<bool>,
+    pub executable: Option<bool>,
+    pub recursive: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct DateChange {
+    pub modified: Option<u64>,
+    pub created: Option<u64>,
+    pub accessed: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TagsChange {
+    pub operation: String, // "add", "remove", "replace"
+    pub tags: Vec<String>,
+}
+
+/// Change file attributes (permissions, dates, tags)
+#[tauri::command]
+pub fn batch_change_attributes(
+    path: String,
+    permissions: Option<PermissionsChange>,
+    dates: Option<DateChange>,
+    tags: Option<TagsChange>,
+) -> Result<(), String> {
+    use std::fs;
+    use std::path::Path;
+
+    let file_path = Path::new(&path);
+
+    // Change permissions
+    #[cfg(unix)]
+    if let Some(perms) = permissions {
+        use std::os::unix::fs::PermissionsExt;
+
+        let metadata = fs::metadata(file_path)
+            .map_err(|e| format!("Failed to read metadata: {}", e))?;
+
+        let mut mode = metadata.permissions().mode();
+
+        // Update permission bits
+        if let Some(readable) = perms.readable {
+            if readable {
+                mode |= 0o444; // r--r--r--
+            } else {
+                mode &= !0o444;
+            }
+        }
+
+        if let Some(writable) = perms.writable {
+            if writable {
+                mode |= 0o222; // -w--w--w-
+            } else {
+                mode &= !0o222;
+            }
+        }
+
+        if let Some(executable) = perms.executable {
+            if executable {
+                mode |= 0o111; // --x--x--x
+            } else {
+                mode &= !0o111;
+            }
+        }
+
+        let new_permissions = fs::Permissions::from_mode(mode);
+        fs::set_permissions(file_path, new_permissions)
+            .map_err(|e| format!("Failed to set permissions: {}", e))?;
+    }
+
+    // Change dates
+    if let Some(date_changes) = dates {
+        use filetime::{set_file_times, FileTime};
+
+        let metadata = fs::metadata(file_path)
+            .map_err(|e| format!("Failed to read metadata: {}", e))?;
+
+        let current_accessed = FileTime::from_last_access_time(&metadata);
+        let current_modified = FileTime::from_last_modification_time(&metadata);
+
+        let new_accessed = if let Some(accessed) = date_changes.accessed {
+            FileTime::from_unix_time(accessed as i64, 0)
+        } else {
+            current_accessed
+        };
+
+        let new_modified = if let Some(modified) = date_changes.modified {
+            FileTime::from_unix_time(modified as i64, 0)
+        } else {
+            current_modified
+        };
+
+        set_file_times(file_path, new_accessed, new_modified)
+            .map_err(|e| format!("Failed to set file times: {}", e))?;
+    }
+
+    // Change tags (macOS extended attributes or custom metadata)
+    #[cfg(target_os = "macos")]
+    if let Some(tags_change) = tags {
+        use std::process::Command;
+
+        let tags_str = tags_change.tags.join(",");
+
+        match tags_change.operation.as_str() {
+            "add" | "replace" => {
+                // Use xattr command to set tags
+                Command::new("xattr")
+                    .args([
+                        "-w",
+                        "com.apple.metadata:_kMDItemUserTags",
+                        &tags_str,
+                        &path,
+                    ])
+                    .output()
+                    .map_err(|e| format!("Failed to set tags: {}", e))?;
+            }
+            "remove" => {
+                // Remove tags attribute
+                Command::new("xattr")
+                    .args(["-d", "com.apple.metadata:_kMDItemUserTags", &path])
+                    .output()
+                    .ok(); // Ignore errors if attribute doesn't exist
+            }
+            _ => return Err("Invalid tag operation".to_string()),
+        }
+    }
+
+    Ok(())
+}
+
+/// Validate batch rename operation
+#[tauri::command]
+pub fn validate_batch_rename(new_names: Vec<String>) -> Result<Vec<String>, String> {
+    use std::collections::HashSet;
+
+    let mut errors = Vec::new();
+    let mut seen_names = HashSet::new();
+
+    for name in &new_names {
+        // Check for empty names
+        if name.trim().is_empty() {
+            errors.push(format!("Empty filename is not allowed"));
+            continue;
+        }
+
+        // Check for illegal characters
+        let illegal_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+        if name.chars().any(|c| illegal_chars.contains(&c)) {
+            errors.push(format!("Filename '{}' contains illegal characters", name));
+        }
+
+        // Check for duplicate names
+        let lower_name = name.to_lowercase();
+        if seen_names.contains(&lower_name) {
+            errors.push(format!("Duplicate filename: '{}'", name));
+        }
+        seen_names.insert(lower_name);
+    }
+
+    if errors.is_empty() {
+        Ok(Vec::new())
+    } else {
+        Ok(errors)
+    }
 }

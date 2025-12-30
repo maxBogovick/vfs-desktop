@@ -5,6 +5,7 @@ interface Props {
   x: number;
   y: number;
   item: FileItem | null;
+  selectedCount?: number;
 }
 
 interface Emits {
@@ -17,10 +18,14 @@ interface Emits {
   (e: 'addToFavorites'): void;
   (e: 'openTerminal'): void;
   (e: 'properties'): void;
+  (e: 'batchRename'): void;
+  (e: 'batchAttributes'): void;
   (e: 'close'): void;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  selectedCount: 0,
+});
 const emit = defineEmits<Emits>();
 
 const handleAction = (action: keyof Emits) => {
@@ -80,12 +85,36 @@ const handleAction = (action: keyof Emits) => {
 
     <!-- Rename -->
     <div
+      v-if="selectedCount <= 1"
       @click="handleAction('rename')"
       class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
     >
       <span class="w-4">✏️</span>
       <span class="flex-1">Rename</span>
       <span class="text-[9px] text-gray-400">F2</span>
+    </div>
+
+    <!-- Batch Operations (when multiple items selected) -->
+    <div v-if="selectedCount > 1" class="border-t border-[#D0D0BF] my-1"></div>
+
+    <div
+      v-if="selectedCount > 1"
+      @click="handleAction('batchRename')"
+      class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+    >
+      <span class="w-4">📝</span>
+      <span class="flex-1">Batch Rename</span>
+      <span class="text-[9px] text-gray-400">{{ selectedCount }} items</span>
+    </div>
+
+    <div
+      v-if="selectedCount > 1"
+      @click="handleAction('batchAttributes')"
+      class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+    >
+      <span class="w-4">🔧</span>
+      <span class="flex-1">Batch Attributes</span>
+      <span class="text-[9px] text-gray-400">{{ selectedCount }} items</span>
     </div>
 
     <!-- Delete -->
