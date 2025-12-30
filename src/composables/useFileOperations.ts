@@ -5,12 +5,15 @@ import {useNotifications} from './useNotifications';
 import {useFileContentCache} from './useFileContentCache';
 import {useFileOperationsProgress} from './useFileOperationsProgress';
 import {useConflictResolution} from './useConflictResolution';
+import {useTemplates} from './useTemplates';
 
 export function useFileOperations(refreshCallback?: () => Promise<void>) {
   const {
     loadDirectory,
     renameItem,
     createFolder,
+    createFile,
+    createFilesBatch,
     openFile: openFileInApp,
     revealInFinder,
   } = useFileSystem();
@@ -29,6 +32,7 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
 
   const { success, error: showError, warning } = useNotifications();
   const { invalidate: invalidateCache } = useFileContentCache();
+  const { getTemplateContent } = useTemplates();
 
   // Функция для обновления текущей директории
   const refreshDirectory = async (currentPath: string[]) => {
@@ -317,6 +321,89 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     );
   };
 
+  // Create new file (inline mode)
+  const handleNewFile = async (
+    currentPath: string[],
+    name: string,
+    templateId?: string
+  ) => {
+    if (!name) {
+      warning('Invalid name', 'File name cannot be empty');
+      return;
+    }
+
+    try {
+      const currentDir = await getCurrentDirectory(currentPath);
+
+      // Get template content if templateId is provided
+      let content: string | undefined;
+      if (templateId) {
+        content = await getTemplateContent(templateId);
+      }
+
+      await createFile(currentDir, name, content);
+
+      // Refresh directory
+      await refreshDirectory(currentPath);
+      success('File created', `Created ${name}`);
+    } catch (err) {
+      showError('Create file failed', err instanceof Error ? err.message : 'Unknown error');
+      throw err;
+    }
+  };
+
+  // Batch create files
+  const handleBatchCreate = async (
+    currentPath: string[],
+    files: Array<{ name: string; content?: string; templateId?: string }>
+  ) => {
+    if (files.length === 0) {
+      warning('No files', 'No files to create');
+      return;
+    }
+
+    try {
+      const currentDir = await getCurrentDirectory(currentPath);
+
+      // Prepare files with template content if needed
+      const filesWithContent = await Promise.all(
+        files.map(async (file) => {
+          let content = file.content;
+
+          // Get template content if templateId is provided
+          if (file.templateId && !content) {
+            content = await getTemplateContent(file.templateId);
+          }
+
+          return {
+            name: file.name,
+            content,
+          };
+        })
+      );
+
+      const result = await createFilesBatch(currentDir, filesWithContent);
+
+      // Refresh directory
+      await refreshDirectory(currentPath);
+
+      // Show result
+      if (result.failed && result.failed.length > 0) {
+        warning(
+          'Some files failed',
+          `Created ${result.created.length} file(s), ${result.failed.length} failed`
+        );
+      } else {
+        success('Files created', `Created ${result.created.length} file(s)`);
+      }
+
+      return result;
+    } catch (err) {
+      showError('Batch create failed', err instanceof Error ? err.message : 'Unknown error');
+      throw err;
+    }
+  };
+
   // Open file in default application
   const handleOpenFile = async (file: FileItem) => {
     try {
@@ -369,6 +456,8 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     handleDelete,
     handleRename,
     handleNewFolder,
+    handleNewFile,
+    handleBatchCreate,
     handleOpenFile,
     handleProperties,
     handleRevealInFinder,

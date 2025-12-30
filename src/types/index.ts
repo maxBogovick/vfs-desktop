@@ -384,3 +384,25 @@ export interface BatchValidationResult {
   errors: ValidationError[];
   warnings: ValidationError[];
 }
+
+// File Creation Types
+export interface FileTemplate {
+  id: string
+  name: string
+  content: string
+  category: string
+  icon: string
+  fileExtensions: string[]
+  contextPatterns: string[]
+}
+
+export interface FileSpec {
+  name: string
+  content?: string
+  templateId?: string
+}
+
+export interface BatchCreateResult {
+  created: string[]
+  failed: Array<{ name: string; error: string }>
+}

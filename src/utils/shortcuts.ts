@@ -15,6 +15,8 @@ interface ShortcutHandlers {
   handleRename: () => void;
   handleRefresh: () => void;
   handleNewFolder: () => void;
+  handleNewFile: () => void;
+  toggleProgrammerMode: () => void;
   toggleBookmark: () => void;
   openSettings: () => void;
   // Keyboard navigation
@@ -107,6 +109,19 @@ export function createKeyboardShortcuts(
       shift: true,
       description: 'New folder',
       callback: handlers.handleNewFolder,
+    },
+    {
+      key: 'n',
+      ctrl: true,
+      description: 'New file',
+      callback: handlers.handleNewFile,
+    },
+    {
+      key: 'p',
+      ctrl: true,
+      shift: true,
+      description: 'Toggle programmer mode',
+      callback: handlers.toggleProgrammerMode,
     },
     {
       key: 'd',

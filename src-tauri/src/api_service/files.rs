@@ -19,6 +19,7 @@ use crate::api::{RealFileSystem, virtual_fs::VirtualFileSystem};
 use crate::config::FileSystemBackend;
 use crate::core::FileSystem;
 use crate::state::APP_CONFIG;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// Enum для хранения разных типов файловых систем
@@ -34,6 +35,22 @@ impl FileSystemInstance {
             FileSystemInstance::Virtual(fs) => fs,
         }
     }
+}
+
+/// Результат batch создания файлов
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchCreateResult {
+    pub created: Vec<String>,
+    pub failed: Vec<BatchCreateError>,
+}
+
+/// Ошибка при создании файла в batch операции
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchCreateError {
+    pub name: String,
+    pub error: String,
 }
 
 /// Service for file system operations
@@ -126,6 +143,80 @@ impl FileService {
                 message: err.message,
             }
         })
+    }
+
+    /// Create new file with optional content
+    ///
+    /// # Arguments
+    /// * `path` - Parent directory path
+    /// * `name` - New file name
+    /// * `content` - Optional file content
+    pub fn create_file(&self, path: &str, name: &str, content: Option<&str>) -> ApiResult<()> {
+        tracing::info!("Creating file '{}' in '{}'", name, path);
+
+        // Validate file name
+        if name.is_empty() {
+            return Err(ApiError::ValidationError {
+                message: "File name cannot be empty".to_string(),
+            });
+        }
+
+        if name.contains('/') || name.contains('\\') {
+            return Err(ApiError::ValidationError {
+                message: "File name cannot contain path separators".to_string(),
+            });
+        }
+
+        self.get_filesystem().as_trait().create_file(path, name, content).map_err(|err| {
+            tracing::error!("Failed to create file: {}", err.message);
+            ApiError::OperationFailed {
+                message: err.message,
+            }
+        })
+    }
+
+    /// Batch create multiple files
+    ///
+    /// # Arguments
+    /// * `path` - Parent directory path
+    /// * `files` - Vector of (name, content) tuples
+    pub fn create_files_batch(
+        &self,
+        path: &str,
+        files: &[(String, Option<String>)],
+    ) -> ApiResult<BatchCreateResult> {
+        tracing::info!("Batch creating {} files in '{}'", files.len(), path);
+
+        if files.is_empty() {
+            return Err(ApiError::ValidationError {
+                message: "No files specified".to_string(),
+            });
+        }
+
+        let results = self.get_filesystem()
+            .as_trait()
+            .create_files_batch(path, files)
+            .map_err(|err| {
+                tracing::error!("Batch create failed: {}", err.message);
+                ApiError::OperationFailed {
+                    message: err.message,
+                }
+            })?;
+
+        let mut created = Vec::new();
+        let mut failed = Vec::new();
+
+        for (i, result) in results.iter().enumerate() {
+            match result {
+                Ok(_) => created.push(files[i].0.clone()),
+                Err(err) => failed.push(BatchCreateError {
+                    name: files[i].0.clone(),
+                    error: err.message.clone(),
+                }),
+            }
+        }
+
+        Ok(BatchCreateResult { created, failed })
     }
 
     /// Copy files/folders to destination

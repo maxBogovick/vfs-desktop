@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import type { FileItem, ViewMode } from '../types';
 import type { FileGroup } from '../composables/useGrouping';
+import InlineFileCreator from './InlineFileCreator.vue';
 
 interface Props {
   items: FileItem[];
@@ -12,6 +13,9 @@ interface Props {
   isDragging?: boolean;
   dragTargetId?: string | null;
   groups?: FileGroup[];
+  showInlineCreator?: boolean;
+  inlineCreatorMode?: 'file' | 'folder';
+  currentPath?: string[];
 }
 
 interface Emits {
@@ -30,6 +34,9 @@ interface Emits {
   (e: 'deleteItem', item: FileItem): void;
   (e: 'renameItem', item: FileItem): void;
   (e: 'openTerminal', item: FileItem): void;
+  (e: 'createFile', payload: { name: string; isFolder: boolean; templateId?: string }): void;
+  (e: 'batchCreateFiles', names: string[]): void;
+  (e: 'cancelInlineCreator'): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -38,6 +45,9 @@ const props = withDefaults(defineProps<Props>(), {
   isDragging: false,
   dragTargetId: null,
   groups: undefined,
+  showInlineCreator: false,
+  inlineCreatorMode: 'file',
+  currentPath: () => [],
 });
 
 const emit = defineEmits<Emits>();
@@ -105,6 +115,16 @@ const isFocused = (itemId: string) => {
   <div class="flex-1 p-4 overflow-y-auto bg-white min-h-full relative"
     @dragover="emit('dragOverBackground', $event)"
     @drop.stop="emit('dropOnBackground', $event)">
+    <!-- Inline File Creator -->
+    <InlineFileCreator
+      :is-open="showInlineCreator"
+      :current-path="currentPath"
+      :mode="inlineCreatorMode"
+      @create="(payload) => emit('createFile', payload)"
+      @batch-create="(names) => emit('batchCreateFiles', names)"
+      @cancel="emit('cancelInlineCreator')"
+    />
+
     <!-- Loading State -->
     <div v-if="isLoading" class="flex items-center justify-center h-full pointer-events-none">
       <div class="text-center">

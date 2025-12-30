@@ -239,6 +239,62 @@ impl FileSystem for RealFileSystem {
         Ok(())
     }
 
+    fn create_file(&self, path: &str, name: &str, content: Option<&str>) -> FileSystemResult<()> {
+        use std::io::Write;
+
+        let dir_path = PathBuf::from(path);
+
+        if !dir_path.exists() {
+            return Err(FileSystemError::new(format!(
+                "Parent directory does not exist: {}",
+                path
+            )));
+        }
+
+        let new_file_path = dir_path.join(name);
+
+        if new_file_path.exists() {
+            return Err(FileSystemError::new(format!(
+                "File already exists: {}",
+                name
+            )));
+        }
+
+        let mut file = fs::File::create(&new_file_path)
+            .map_err(|e| FileSystemError::new(format!("Failed to create file: {}", e)))?;
+
+        if let Some(content_str) = content {
+            file.write_all(content_str.as_bytes())
+                .map_err(|e| FileSystemError::new(format!("Failed to write file content: {}", e)))?;
+        }
+
+        Ok(())
+    }
+
+    fn create_files_batch(
+        &self,
+        path: &str,
+        files: &[(String, Option<String>)],
+    ) -> FileSystemResult<Vec<FileSystemResult<()>>> {
+        let dir_path = PathBuf::from(path);
+
+        if !dir_path.exists() {
+            return Err(FileSystemError::new(format!(
+                "Parent directory does not exist: {}",
+                path
+            )));
+        }
+
+        let mut results = Vec::new();
+
+        for (name, content) in files {
+            let result = self.create_file(path, name, content.as_deref());
+            results.push(result);
+        }
+
+        Ok(results)
+    }
+
     fn copy_items(&self, sources: &[String], destination: &str) -> FileSystemResult<()> {
         let dest_path = PathBuf::from(destination);
 

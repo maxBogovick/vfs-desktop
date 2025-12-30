@@ -451,6 +451,73 @@ impl FileSystem for VirtualFileSystem {
         Ok(())
     }
 
+    fn create_file(&self, path: &str, name: &str, content: Option<&str>) -> FileSystemResult<()> {
+        if name.contains('/') {
+            return Err(FileSystemError::new("Имя файла не должно содержать '/'"));
+        }
+
+        let normalized = self.normalize_path_internal(path);
+
+        let mut state = self.state.write()
+            .map_err(|_| FileSystemError::new("Не удалось получить блокировку"))?;
+
+        let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
+        let mut current = &mut state.root;
+
+        for part in parts {
+            match current {
+                VfsNode::Directory { children, .. } => {
+                    current = children.get_mut(part)
+                        .ok_or_else(|| FileSystemError::new(format!("Путь не найден: {}", path)))?;
+                }
+                VfsNode::File { .. } => {
+                    return Err(FileSystemError::new("Путь содержит файл"));
+                }
+            }
+        }
+
+        match current {
+            VfsNode::Directory { children, modified, .. } => {
+                if children.contains_key(name) {
+                    return Err(FileSystemError::new(format!("Файл '{}' уже существует", name)));
+                }
+
+                let file_content = content
+                    .map(|c| c.as_bytes().to_vec())
+                    .unwrap_or_else(Vec::new);
+
+                children.insert(name.to_string(), VfsNode::File {
+                    content: file_content,
+                    modified: current_timestamp(),
+                    created: current_timestamp(),
+                });
+                *modified = current_timestamp();
+            }
+            VfsNode::File { .. } => {
+                return Err(FileSystemError::new("Не является директорией"));
+            }
+        }
+
+        drop(state);
+        self.save_state()?;
+        Ok(())
+    }
+
+    fn create_files_batch(
+        &self,
+        path: &str,
+        files: &[(String, Option<String>)],
+    ) -> FileSystemResult<Vec<FileSystemResult<()>>> {
+        let mut results = Vec::new();
+
+        for (name, content) in files {
+            let result = self.create_file(path, name, content.as_deref());
+            results.push(result);
+        }
+
+        Ok(results)
+    }
+
     fn copy_items(&self, sources: &[String], destination: &str) -> FileSystemResult<()> {
         // Копируем узлы
         let nodes_to_copy: Vec<(String, VfsNode)> = sources.iter()

@@ -71,6 +71,17 @@ pub trait FileSystem: Send + Sync {
     /// Создание новой директории
     fn create_folder(&self, path: &str, name: &str) -> FileSystemResult<()>;
 
+    /// Создание нового файла с опциональным содержимым
+    fn create_file(&self, path: &str, name: &str, content: Option<&str>) -> FileSystemResult<()>;
+
+    /// Batch создание файлов
+    /// Возвращает вектор результатов для каждого файла
+    fn create_files_batch(
+        &self,
+        path: &str,
+        files: &[(String, Option<String>)],
+    ) -> FileSystemResult<Vec<FileSystemResult<()>>>;
+
     /// Копирование файлов/директорий
     fn copy_items(&self, sources: &[String], destination: &str) -> FileSystemResult<()>;
 

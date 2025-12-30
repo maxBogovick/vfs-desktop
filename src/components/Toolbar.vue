@@ -14,6 +14,7 @@ interface Props {
   canGoForward: boolean;
   canGoUp: boolean;
   isCurrentPathBookmarked?: boolean;
+  isProgrammerMode?: boolean;
   panelMode?: PanelMode;
   groupBy?: GroupBy;
   groupByOptions?: ReadonlyArray<{ value: string; label: string; icon: string }>;
@@ -32,6 +33,7 @@ interface Emits {
   (e: 'update:viewMode', mode: ViewMode): void;
   (e: 'openCommandPalette'): void;
   (e: 'toggleBookmark'): void;
+  (e: 'toggleProgrammerMode'): void;
   (e: 'togglePanelMode'): void;
   (e: 'toggleDashboard'): void;
   (e: 'update:groupBy', value: GroupBy): void;
@@ -231,6 +233,20 @@ watch(fullPath, () => {
         title="Folder Statistics Dashboard"
       >
         📊
+      </button>
+
+      <!-- Programmer Mode Button -->
+      <button
+        @click="emit('toggleProgrammerMode')"
+        :class="[
+          'w-[30px] h-[28px] bg-gradient-to-b border border-[#8B8B8B] hover:border-[#0054E3] flex items-center justify-center transition-all',
+          isProgrammerMode
+            ? 'bg-[#C1D2EE] from-[#C1D2EE] to-[#A8C0E8] border-[#0A246A]'
+            : 'from-white to-[#E3DED4] active:bg-[#C1D2EE]'
+        ]"
+        :title="isProgrammerMode ? 'Programmer Mode: ON (Ctrl+Shift+P)' : 'Programmer Mode: OFF (Ctrl+Shift+P)'"
+      >
+        {{ isProgrammerMode ? '🔧' : '💻' }}
       </button>
 
       <!-- Group By Dropdown -->

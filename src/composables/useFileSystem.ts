@@ -161,6 +161,25 @@ export function useFileSystem() {
     }
   };
 
+  // Create new file
+  const createFile = async (path: string, name: string, content?: string): Promise<void> => {
+    try {
+      await invoke('create_file', { path, name, content: content || null });
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Failed to create file');
+    }
+  };
+
+  // Batch create files
+  const createFilesBatch = async (path: string, files: Array<{ name: string; content?: string }>): Promise<any> => {
+    try {
+      const result = await invoke('create_files_batch', { path, files });
+      return result;
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Failed to create files');
+    }
+  };
+
   // Copy items
   const copyItems = async (sources: string[], destination: string): Promise<void> => {
     try {
@@ -262,6 +281,8 @@ export function useFileSystem() {
     deleteItem,
     renameItem,
     createFolder,
+    createFile,
+    createFilesBatch,
     copyItems,
     moveItems,
     openFile,

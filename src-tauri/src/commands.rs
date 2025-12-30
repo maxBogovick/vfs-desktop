@@ -47,6 +47,58 @@ pub fn create_folder(path: String, name: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn create_file(path: String, name: String, content: Option<String>) -> Result<(), String> {
+    API.files.create_file(&path, &name, content.as_deref()).map_err(|e| e.to_string())
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FileSpec {
+    pub name: String,
+    pub content: Option<String>,
+}
+
+#[tauri::command]
+pub fn create_files_batch(path: String, files: Vec<FileSpec>) -> Result<crate::api_service::files::BatchCreateResult, String> {
+    let file_specs: Vec<(String, Option<String>)> = files
+        .into_iter()
+        .map(|f| (f.name, f.content))
+        .collect();
+
+    API.files.create_files_batch(&path, &file_specs).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_file_templates() -> Result<Vec<crate::templates::FileTemplate>, String> {
+    let registry = crate::templates::TemplateRegistry::new();
+    Ok(registry.get_all_templates())
+}
+
+#[tauri::command]
+pub fn suggest_file_extension(path: String) -> Result<Option<String>, String> {
+    // Получаем список файлов в директории
+    let entries = API.files.list_directory(&path).map_err(|e| e.to_string())?;
+
+    let file_names: Vec<String> = entries
+        .into_iter()
+        .filter(|e| !e.is_dir)
+        .map(|e| e.name)
+        .collect();
+
+    let registry = crate::templates::TemplateRegistry::new();
+    Ok(registry.suggest_extension(&file_names))
+}
+
+#[tauri::command]
+pub fn get_template_content(template_id: String) -> Result<String, String> {
+    let registry = crate::templates::TemplateRegistry::new();
+    registry
+        .get_template_by_id(&template_id)
+        .map(|t| t.content)
+        .ok_or_else(|| format!("Template not found: {}", template_id))
+}
+
+#[tauri::command]
 pub fn copy_items(sources: Vec<String>, destination: String) -> Result<(), String> {
     API.files.copy_items(&sources, &destination).map_err(|e| e.to_string())
 }

@@ -6,6 +6,7 @@ mod error;
 mod commands;
 mod progress;
 mod file_operations;
+pub mod templates;
 
 // Shared application state
 pub mod state;
@@ -49,6 +50,8 @@ pub fn run() {
             delete_item,
             rename_item,
             create_folder,
+            create_file,
+            create_files_batch,
             copy_items,
             move_items,
             get_home_directory,
@@ -88,7 +91,11 @@ pub fn run() {
             copy_file_with_custom_name,
             // Batch operations commands
             batch_change_attributes,
-            validate_batch_rename
+            validate_batch_rename,
+            // Template commands
+            get_file_templates,
+            suggest_file_extension,
+            get_template_content
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -37,6 +37,8 @@ import { useContextMenu } from './composables/useContextMenu';
 import { useGrouping } from './composables/useGrouping';
 import { useConflictResolution } from './composables/useConflictResolution';
 import { useBatchOperations } from './composables/useBatchOperations';
+import { useProgrammerMode } from './composables/useProgrammerMode';
+import { useTemplates } from './composables/useTemplates';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type { FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange } from './types';
@@ -246,6 +248,12 @@ const { queueBatchRename, queueBatchAttributeChange, hasOperations } = useBatchO
   }
 });
 
+// Programmer Mode
+const { isProgrammerMode, toggleProgrammerMode } = useProgrammerMode();
+
+// Templates
+const { loadTemplates } = useTemplates();
+
 // Local state
 const viewMode = ref<ViewMode>('list');
 const isCommandPaletteOpen = ref(false);
@@ -257,6 +265,10 @@ const showBatchRenameDialog = ref(false);
 const showBatchAttributeDialog = ref(false);
 const showBatchQueue = ref(false);
 const batchOperationFiles = ref<FileItem[]>([]);
+
+// Inline File Creator state
+const showInlineCreator = ref(false);
+const inlineCreatorMode = ref<'file' | 'folder'>('file');
 
 // System stats
 const systemStats = ref({ memory_mb: 0, cpu_percent: 0 });
@@ -402,6 +414,34 @@ const handleOpenTerminal = async (item: FileItem) => {
   } catch (err) {
     error('Failed to open terminal', err instanceof Error ? err.message : 'Unknown error');
   }
+};
+
+// Inline File Creator handlers
+const handleCreateFile = async (payload: { name: string; isFolder: boolean; templateId?: string }) => {
+  try {
+    if (payload.isFolder) {
+      await fileOps.handleNewFile(currentPath.value, payload.name);
+    } else {
+      await fileOps.handleNewFile(currentPath.value, payload.name, payload.templateId);
+    }
+    showInlineCreator.value = false;
+  } catch (err) {
+    console.error('Failed to create file:', err);
+  }
+};
+
+const handleBatchCreateFiles = async (names: string[]) => {
+  try {
+    const files = names.map(name => ({ name }));
+    await fileOps.handleBatchCreate(currentPath.value, files);
+    showInlineCreator.value = false;
+  } catch (err) {
+    console.error('Failed to batch create files:', err);
+  }
+};
+
+const handleCancelInlineCreator = () => {
+  showInlineCreator.value = false;
 };
 
 // Navigation handlers for toolbar (work in both single and dual modes)
@@ -664,6 +704,13 @@ const shortcuts = createKeyboardShortcuts(
         } else {
           fileOps.handleNewFolder(currentPath.value, showInput);
         }
+      },
+      handleNewFile: () => {
+        inlineCreatorMode.value = 'file';
+        showInlineCreator.value = true;
+      },
+      toggleProgrammerMode: () => {
+        toggleProgrammerMode();
       },
       toggleBookmark: handleToggleBookmark,
       openSettings: () => { showSettings.value = true; },
@@ -1013,6 +1060,11 @@ onMounted(async () => {
   // Load bookmarks
   await loadBookmarks();
 
+  // Load templates (for programmer mode)
+  if (isProgrammerMode.value) {
+    await loadTemplates();
+  }
+
   // Start system stats updates
   updateSystemStats();
   setInterval(updateSystemStats, 2000); // Update every 2 seconds
@@ -1085,6 +1137,7 @@ onMounted(async () => {
         :can-go-forward="canGoForwardComputed"
         :can-go-up="canGoUp"
         :is-current-path-bookmarked="isCurrentPathBookmarked"
+        :is-programmer-mode="isProgrammerMode"
         :group-by="groupBy"
         :group-by-options="groupByOptions"
         @go-back="handleGoBack"
@@ -1099,6 +1152,7 @@ onMounted(async () => {
         @update:view-mode="(mode) => viewMode = mode"
         @open-command-palette="() => isCommandPaletteOpen = true"
         @toggle-bookmark="handleToggleBookmark"
+        @toggle-programmer-mode="toggleProgrammerMode"
         @toggle-panel-mode="togglePanelMode"
         @toggle-dashboard="handleToggleDashboard"
         @update:group-by="(value) => groupBy = value"
@@ -1132,6 +1186,9 @@ onMounted(async () => {
               :is-loading="isLoading"
               :is-dragging="isDragging"
               :drag-target-id="dragOverId"
+              :show-inline-creator="showInlineCreator"
+              :inline-creator-mode="inlineCreatorMode"
+              :current-path="currentPath"
               @item-click="(item, event) => handleItemClick(item, files, event)"
               @item-double-click="handleItemDoubleClick"
               @item-context-menu="handleContextMenu"
@@ -1145,6 +1202,9 @@ onMounted(async () => {
               @copy-item="(item) => fileOps.handleCopy([item])"
               @cut-item="(item) => fileOps.handleCut([item])"
               @delete-item="(item) => fileOps.handleDelete([item], currentPath, clearSelection, showConfirm)"
+              @create-file="handleCreateFile"
+              @batch-create-files="handleBatchCreateFiles"
+              @cancel-inline-creator="handleCancelInlineCreator"
               @rename-item="(item) => fileOps.handleRename([item], currentPath, showInput)"
               @open-terminal="handleOpenTerminal"
           />
