@@ -27,6 +27,7 @@ export interface ActivePanelMethods {
   handleRename: () => void;
   handleRefresh: () => void;
   handleNewFolder: () => void;
+  handleNewFile: () => void;
   addTab: () => void;
   closeTab: () => void;
   goUp: () => void;

@@ -706,8 +706,13 @@ const shortcuts = createKeyboardShortcuts(
         }
       },
       handleNewFile: () => {
-        inlineCreatorMode.value = 'file';
-        showInlineCreator.value = true;
+        if (isDualMode.value) {
+          const methods = getActivePanelMethods();
+          if (methods) methods.handleNewFile();
+        } else {
+          inlineCreatorMode.value = 'file';
+          showInlineCreator.value = true;
+        }
       },
       toggleProgrammerMode: () => {
         toggleProgrammerMode();

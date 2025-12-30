@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch } from 'vue';
 import PanelToolbar from './PanelToolbar.vue';
 import FileList from './FileList.vue';
 import { useFileSystem } from '../composables/useFileSystem';
@@ -99,6 +99,10 @@ const refreshCurrentDirectory = async () => {
 
 // File Operations
 const fileOps = useFileOperations(refreshCurrentDirectory);
+
+// Inline File Creator state (per panel)
+const showInlineCreator = ref(false);
+const inlineCreatorMode = ref<'file' | 'folder'>('file');
 
 // Watch active tab and update current path
 watch(() => props.activeTabId, () => {
@@ -347,6 +351,53 @@ const handleRenameItem = (item: FileItem) => {
   fileOps.handleRename([item], currentPath.value, showInput);
 };
 
+// Handle file creation from inline creator
+const handleCreateFile = async (payload: { name: string; isFolder: boolean; templateId?: string }) => {
+  // Activate panel on any interaction
+  if (!props.isActive) {
+    emit('activate');
+  }
+
+  try {
+    const { createFolder, createFile } = useFileSystem();
+    const pathString = await getCurrentDirectoryPath();
+
+    if (payload.isFolder) {
+      await createFolder(pathString, payload.name);
+    } else {
+      const { getTemplateContent } = await import('../composables/useTemplates').then(m => m.useTemplates());
+      const content = payload.templateId ? await getTemplateContent(payload.templateId) : undefined;
+      await createFile(pathString, payload.name, content);
+    }
+
+    await refreshCurrentDirectory();
+    showInlineCreator.value = false;
+  } catch (err) {
+    console.error('Failed to create file:', err);
+  }
+};
+
+// Handle batch file creation
+const handleBatchCreateFiles = async (names: string[]) => {
+  // Activate panel on any interaction
+  if (!props.isActive) {
+    emit('activate');
+  }
+
+  try {
+    const files = names.map(name => ({ name }));
+    await fileOps.handleBatchCreate(currentPath.value, files);
+    showInlineCreator.value = false;
+  } catch (err) {
+    console.error('Failed to batch create files:', err);
+  }
+};
+
+// Handle inline creator cancel
+const handleCancelInlineCreator = () => {
+  showInlineCreator.value = false;
+};
+
 const handleOpenTerminal = async (item: FileItem) => {
   // Activate panel on any interaction
   if (!props.isActive) {
@@ -381,6 +432,10 @@ watch(() => props.isActive, (isActive) => {
       handleRename: () => fileOps.handleRename(getSelected(), currentPath.value, showInput),
       handleRefresh: () => fileOps.handleRefresh(currentPath.value),
       handleNewFolder: () => fileOps.handleNewFolder(currentPath.value, showInput),
+      handleNewFile: () => {
+        inlineCreatorMode.value = 'file';
+        showInlineCreator.value = true;
+      },
       addTab: handleAddTab,
       closeTab: () => {
         if (props.tabs.length > 1 && props.activeTabId) {
@@ -513,6 +568,9 @@ watch(() => props.isActive, (isActive) => {
         :is-loading="isLoading"
         :is-dragging="isDragging"
         :drag-target-id="dragOverId"
+        :show-inline-creator="showInlineCreator"
+        :inline-creator-mode="inlineCreatorMode"
+        :current-path="currentPath"
         @item-click="handleItemClickWithActivation"
         @item-double-click="handleItemDoubleClick"
         @item-context-menu="handleItemContextMenu"
@@ -528,6 +586,9 @@ watch(() => props.isActive, (isActive) => {
         @cut-item="handleCutItem"
         @delete-item="handleDeleteItem"
         @rename-item="handleRenameItem"
+        @create-file="handleCreateFile"
+              @batch-create-files="handleBatchCreateFiles"
+              @cancel-inline-creator="handleCancelInlineCreator"
         @open-terminal="handleOpenTerminal"
     />
   </div>
