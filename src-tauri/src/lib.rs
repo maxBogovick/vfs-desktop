@@ -65,6 +65,7 @@ pub fn run() {
             normalize_path,
             get_path_suggestions,
             open_terminal,
+            execute_command,
             // Config commands
             get_config,
             update_config,

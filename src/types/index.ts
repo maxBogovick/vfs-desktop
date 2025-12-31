@@ -156,6 +156,8 @@ export interface UIState {
   dual_panel_config: DualPanelConfig;
   window: WindowState;
   sidebar: SidebarState;
+  terminal_height?: number;
+  terminal_visible?: boolean;
 }
 
 export interface AppConfig {
@@ -405,4 +407,24 @@ export interface FileSpec {
 export interface BatchCreateResult {
   created: string[]
   failed: Array<{ name: string; error: string }>
+}
+
+// ===== Terminal Types =====
+
+export interface CommandHistoryEntry {
+  id: string;
+  command: string;
+  workingDir: string;
+  timestamp: number;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  success: boolean;
+}
+
+export interface CommandResult {
+  stdout: string;
+  stderr: string;
+  exit_code: number;
+  success: boolean;
 }

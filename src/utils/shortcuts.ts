@@ -29,6 +29,8 @@ interface ShortcutHandlers {
   openFocusedItem: () => void;
   // Dual panel
   switchPanels?: () => void;
+  // Terminal
+  toggleTerminal?: () => void;
 }
 
 export function createKeyboardShortcuts(
@@ -174,6 +176,16 @@ export function createKeyboardShortcuts(
       key: 'Tab',
       description: 'Switch panels (dual mode)',
       callback: handlers.switchPanels,
+    });
+  }
+
+  // Add terminal toggle shortcut if handler is provided
+  if (handlers.toggleTerminal) {
+    shortcuts.push({
+      key: '`',
+      ctrl: true,
+      description: 'Toggle terminal',
+      callback: handlers.toggleTerminal,
     });
   }
 

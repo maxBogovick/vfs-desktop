@@ -153,6 +153,38 @@ pub fn open_terminal(path: String) -> Result<(), String> {
     API.system.open_terminal(&path).map_err(|e| e.to_string())
 }
 
+// ====== Команды для работы с терминалом ======
+
+#[derive(Serialize)]
+pub struct CommandResult {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+    pub success: bool,
+}
+
+#[tauri::command]
+pub fn execute_command(
+    command: String,
+    working_dir: String,
+) -> Result<CommandResult, String> {
+    use std::process::Command;
+
+    let output = Command::new("sh")
+        .arg("-c")
+        .arg(&command)
+        .current_dir(&working_dir)
+        .output()
+        .map_err(|e| format!("Failed to execute command: {}", e))?;
+
+    Ok(CommandResult {
+        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+        exit_code: output.status.code().unwrap_or(-1),
+        success: output.status.success(),
+    })
+}
+
 // ====== Команды для работы с закладками ======
 
 #[tauri::command]

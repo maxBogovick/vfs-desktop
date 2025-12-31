@@ -18,6 +18,7 @@ import DualPanelContainer from './components/DualPanelContainer.vue';
 import BatchRenameDialog from './components/BatchRenameDialog.vue';
 import BatchAttributeDialog from './components/BatchAttributeDialog.vue';
 import BatchOperationsQueue from './components/BatchOperationsQueue.vue';
+import Terminal from './components/Terminal.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useNavigation } from './composables/useNavigation';
@@ -39,6 +40,7 @@ import { useConflictResolution } from './composables/useConflictResolution';
 import { useBatchOperations } from './composables/useBatchOperations';
 import { useProgrammerMode } from './composables/useProgrammerMode';
 import { useTemplates } from './composables/useTemplates';
+import { useTerminal } from './composables/useTerminal';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type { FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange } from './types';
@@ -161,6 +163,21 @@ const {
   loadDualPanelState,
   serializeDualPanelState,
 } = useDualPanel();
+
+// Terminal
+const {
+  isVisible: isTerminalVisible,
+  terminalHeight,
+  toggleTerminal,
+} = useTerminal();
+
+// Computed для текущего пути терминала
+const terminalWorkingDir = computed(() => {
+  if (isDualMode.value) {
+    return '/' + activePanelPath.value.join('/');
+  }
+  return '/' + currentPath.value.join('/');
+});
 
 // Handle sidebar resize - напрямую обновляем ref, watch в App.vue сам сохранит
 const handleSidebarResize = (width: number) => {
@@ -723,6 +740,8 @@ const shortcuts = createKeyboardShortcuts(
       switchPanels: isDualMode.value ? () => {
         switchActivePanel(activePanel.value === 'left' ? 'right' : 'left');
       } : undefined,
+      // Terminal toggle (Ctrl+`)
+      toggleTerminal: () => toggleTerminal(),
       // Keyboard navigation
       moveFocusUp: () => {
         if (isDualMode.value) {
@@ -1000,7 +1019,9 @@ watch([
   leftPanelWidthPercent,
   activePanel,
   expandedFolders,
-  sidebarSectionsExpanded
+  sidebarSectionsExpanded,
+  isTerminalVisible,
+  terminalHeight
 ], async () => {
   console.log('[App] 🔥 State changed:');
   console.log('  - Tabs:', tabs.value.length);
@@ -1036,7 +1057,9 @@ watch([
         quick_access_expanded: sidebarSectionsExpanded.value.quickAccess,
         folder_tree_expanded: sidebarSectionsExpanded.value.folderTree,
         favorites_expanded: sidebarSectionsExpanded.value.favorites,
-      }
+      },
+      terminal_height: terminalHeight.value,
+      terminal_visible: isTerminalVisible.value,
     };
 
     console.log('[App] 💾 Saving state with sidebar:', stateToSave.sidebar);
@@ -1115,6 +1138,14 @@ onMounted(async () => {
       console.log('[App] ℹ️ No tabs or path to restore');
     }
   }
+
+  // Restore terminal state
+  if (uiState?.terminal_height) {
+    terminalHeight.value = uiState.terminal_height;
+  }
+  if (uiState?.terminal_visible !== undefined) {
+    isTerminalVisible.value = uiState.terminal_visible;
+  }
 });
 </script>
 
@@ -1163,13 +1194,15 @@ onMounted(async () => {
         @update:group-by="(value) => groupBy = value"
     />
 
-    <!-- Main Content -->
-    <div class="flex-1 flex overflow-hidden">
-      <!-- Dual Panel Mode -->
-      <DualPanelContainer v-if="isDualMode" :view-mode="viewMode" />
+    <!-- Main Content Area -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <!-- File panels (flex-1) -->
+      <div class="flex-1 flex overflow-hidden">
+        <!-- Dual Panel Mode -->
+        <DualPanelContainer v-if="isDualMode" :view-mode="viewMode" />
 
-      <!-- Single Panel Mode -->
-      <template v-else>
+        <!-- Single Panel Mode -->
+        <template v-else>
         <!-- Sidebar -->
         <Sidebar
             :current-path="'/' + currentPath.join('/')"
@@ -1233,6 +1266,16 @@ onMounted(async () => {
           />
         </div>
       </template>
+      </div>
+
+      <!-- Terminal Panel (bottom, if visible) -->
+      <Terminal
+        v-if="isTerminalVisible"
+        :height="terminalHeight"
+        :current-path="terminalWorkingDir"
+        @resize="(h) => terminalHeight = h"
+        @close="toggleTerminal"
+      />
     </div>
 
     <!-- Command Palette -->
