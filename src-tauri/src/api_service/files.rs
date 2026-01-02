@@ -328,6 +328,29 @@ impl FileService {
         })
     }
 
+    /// Write file content
+    ///
+    /// # Arguments
+    /// * `path` - File path to write
+    /// * `content` - Content to write to the file
+    pub fn write_file_content(&self, path: &str, content: &str) -> ApiResult<()> {
+        tracing::info!("Writing file content: {}", path);
+
+        // Validate path
+        if path.is_empty() {
+            return Err(ApiError::ValidationError {
+                message: "File path cannot be empty".to_string(),
+            });
+        }
+
+        self.get_filesystem().as_trait().write_file_content(path, content).map_err(|err| {
+            tracing::error!("Failed to write file: {}", err.message);
+            ApiError::OperationFailed {
+                message: err.message,
+            }
+        })
+    }
+
     /// Open file with system default application
     pub fn open_file(&self, path: &str) -> ApiResult<()> {
         tracing::info!("Opening file: {}", path);

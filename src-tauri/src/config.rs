@@ -179,6 +179,9 @@ pub struct UIState {
 
     #[serde(default)]
     pub sidebar: SidebarState,
+
+    #[serde(default)]
+    pub edit_mode_enabled: Option<bool>,
 }
 
 fn default_sidebar_width() -> u32 {

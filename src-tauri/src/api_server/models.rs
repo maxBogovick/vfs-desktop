@@ -143,6 +143,12 @@ pub struct OpenFileRequest {
     pub path: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct WriteFileContentRequest {
+    pub path: String,
+    pub content: String,
+}
+
 // ===== Batch Operations =====
 
 #[derive(Debug, Deserialize, Serialize, ToSchema)]

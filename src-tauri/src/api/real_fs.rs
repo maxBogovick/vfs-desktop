@@ -528,6 +528,26 @@ impl FileSystem for RealFileSystem {
         }
     }
 
+    fn write_file_content(&self, path: &str, content: &str) -> FileSystemResult<()> {
+        let file_path = PathBuf::from(path);
+
+        // Verify parent directory exists
+        if let Some(parent) = file_path.parent() {
+            if !parent.exists() {
+                return Err(FileSystemError::new(format!(
+                    "Parent directory does not exist: {}",
+                    parent.display()
+                )));
+            }
+        }
+
+        // Write content to file (creates or overwrites)
+        fs::write(&file_path, content)
+            .map_err(|e| FileSystemError::new(format!("Failed to write file: {}", e)))?;
+
+        Ok(())
+    }
+
     fn open_file(&self, path: &str) -> FileSystemResult<()> {
         let file_path = PathBuf::from(path);
 

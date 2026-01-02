@@ -7,6 +7,7 @@ import type {UIState} from '../types';
 const sidebarWidth = ref(240);
 const previewWidth = ref(300);
 const isLoaded = ref(false);
+const editModeEnabled = ref(false);
 
 // Sidebar state
 const expandedFolders = ref<string[]>([]);
@@ -26,6 +27,7 @@ export function useUIState() {
       if (state) {
         sidebarWidth.value = state.sidebar_width;
         previewWidth.value = state.preview_width;
+        editModeEnabled.value = state.edit_mode_enabled ?? false;
 
         // Restore sidebar state
         if (state.sidebar) {
@@ -61,6 +63,7 @@ export function useUIState() {
     sidebarWidth,
     previewWidth,
     isLoaded,
+    editModeEnabled,
     expandedFolders,
     sidebarSectionsExpanded,
     loadUIState,

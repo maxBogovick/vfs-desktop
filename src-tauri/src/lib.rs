@@ -62,6 +62,7 @@ pub fn run() {
             reveal_in_finder,
             get_system_folders,
             read_file_content,
+            write_file_content,
             normalize_path,
             get_path_suggestions,
             open_terminal,

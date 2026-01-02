@@ -252,6 +252,15 @@ export function useFileSystem() {
     }
   };
 
+  // Write file content
+  const writeFileContent = async (path: string, content: string): Promise<void> => {
+    try {
+      await invoke('write_file_content', { path, content });
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Failed to write file content');
+    }
+  };
+
   // Normalize path (expand ~, resolve to absolute path)
   const normalizePath = async (path: string): Promise<string> => {
     try {
@@ -289,6 +298,7 @@ export function useFileSystem() {
     revealInFinder,
     getSystemFolders,
     readFileContent,
+    writeFileContent,
     formatFileSize,
     normalizePath,
     openTerminal,

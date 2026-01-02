@@ -10,6 +10,7 @@ interface Props {
 
 interface Emits {
   (e: 'open'): void;
+  (e: 'edit'): void;
   (e: 'copy'): void;
   (e: 'cut'): void;
   (e: 'paste'): void;
@@ -47,6 +48,17 @@ const handleAction = (action: keyof Emits) => {
       <span class="w-4">📂</span>
       <span class="flex-1">Open</span>
       <span class="text-[9px] text-gray-400">Enter</span>
+    </div>
+
+    <!-- Edit (only for text/code files) -->
+    <div
+      v-if="item && (item.type === 'file' || item.type === 'code') && selectedCount <= 1"
+      @click="handleAction('edit')"
+      class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+    >
+      <span class="w-4">✏️</span>
+      <span class="flex-1">Edit</span>
+      <span class="text-[9px] text-gray-400">F4</span>
     </div>
 
     <div class="border-t border-[#D0D0BF] my-1"></div>

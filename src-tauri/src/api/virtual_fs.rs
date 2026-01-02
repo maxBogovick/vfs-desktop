@@ -660,6 +660,69 @@ impl FileSystem for VirtualFileSystem {
         }
     }
 
+    fn write_file_content(&self, path: &str, content: &str) -> FileSystemResult<()> {
+        let normalized = self.normalize_path_internal(path);
+
+        let mut state = self.state.write()
+            .map_err(|_| FileSystemError::new("Не удалось получить блокировку"))?;
+
+        // Parse path to get parent directory and file name
+        let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
+        if parts.is_empty() {
+            return Err(FileSystemError::new("Некорректный путь файла"));
+        }
+
+        let file_name = parts.last().unwrap();
+        let parent_parts = &parts[..parts.len().saturating_sub(1)];
+
+        // Navigate to parent directory
+        let mut current = &mut state.root;
+        for part in parent_parts {
+            match current {
+                VfsNode::Directory { children, .. } => {
+                    current = children.get_mut(&part.to_string())
+                        .ok_or_else(|| FileSystemError::new(format!("Директория не найдена: {}", part)))?;
+                }
+                VfsNode::File { .. } => {
+                    return Err(FileSystemError::new("Путь содержит файл вместо директории"));
+                }
+            }
+        }
+
+        // Write file content (create or update)
+        match current {
+            VfsNode::Directory { children, modified, .. } => {
+                // Check if file exists and update, otherwise create new
+                if let Some(existing_node) = children.get_mut(*file_name) {
+                    match existing_node {
+                        VfsNode::File { content: existing_content, modified: file_modified, .. } => {
+                            *existing_content = content.as_bytes().to_vec();
+                            *file_modified = current_timestamp();
+                        }
+                        VfsNode::Directory { .. } => {
+                            return Err(FileSystemError::new("Путь указывает на директорию"));
+                        }
+                    }
+                } else {
+                    // Create new file
+                    children.insert(file_name.to_string(), VfsNode::File {
+                        content: content.as_bytes().to_vec(),
+                        modified: current_timestamp(),
+                        created: current_timestamp(),
+                    });
+                }
+                *modified = current_timestamp();
+
+                drop(state);
+                self.save_state()?;
+                Ok(())
+            }
+            VfsNode::File { .. } => {
+                Err(FileSystemError::new("Родительский путь не является директорией"))
+            }
+        }
+    }
+
     fn open_file(&self, _path: &str) -> FileSystemResult<()> {
         // В виртуальной файловой системе это заглушка
         Ok(())

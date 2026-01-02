@@ -139,6 +139,11 @@ pub fn read_file_content(path: String, max_size: Option<u64>) -> Result<String, 
 }
 
 #[tauri::command]
+pub fn write_file_content(path: String, content: String) -> Result<(), String> {
+    API.files.write_file_content(&path, &content).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn normalize_path(path: String) -> Result<String, String> {
     API.files.normalize_path(&path).map_err(|e| e.to_string())
 }

@@ -227,6 +227,24 @@ pub async fn read_file_content(
     }
 }
 
+/// Write file content
+pub async fn write_file_content(
+    State(_state): State<Arc<AppState>>,
+    Json(req): Json<WriteFileContentRequest>,
+) -> impl IntoResponse {
+    match API.files.write_file_content(&req.path, &req.content) {
+        Ok(_) => StatusCode::OK.into_response(),
+        Err(err) => {
+            let status = match err {
+                ApiError::FileNotFound { .. } => StatusCode::NOT_FOUND,
+                ApiError::ValidationError { .. } => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            (status, Json(ErrorResponse::operation_failed(err.to_string()))).into_response()
+        }
+    }
+}
+
 /// Open file with system default application
 pub async fn open_file(
     State(_state): State<Arc<AppState>>,

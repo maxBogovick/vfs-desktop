@@ -9,6 +9,7 @@ interface Props {
   sortBy?: 'name' | 'size' | 'modified' | 'type';
   sortOrder?: 'asc' | 'desc';
   showHidden?: boolean;
+  editModeEnabled?: boolean;
 }
 
 interface Emits {
@@ -20,6 +21,7 @@ interface Emits {
   (e: 'invertSelection'): void;
   (e: 'refresh'): void;
   (e: 'toggleHidden'): void;
+  (e: 'toggleEditMode'): void;
   (e: 'navigateToBreadcrumb', index: number): void;
 }
 
@@ -27,6 +29,7 @@ const props = withDefaults(defineProps<Props>(), {
   sortBy: 'name',
   sortOrder: 'asc',
   showHidden: false,
+  editModeEnabled: false,
   currentPath: () => [],
 });
 
@@ -205,6 +208,20 @@ const fullPath = computed(() => {
         title="Show Hidden Files"
       >
         👁️ {{ showHidden ? 'Hide' : 'Show' }} Hidden
+      </button>
+
+      <!-- Edit Mode Toggle -->
+      <button
+        @click="emit('toggleEditMode')"
+        :class="[
+          'px-2 py-1 bg-gradient-to-b border rounded text-[10px] font-[\'Tahoma\']',
+          editModeEnabled
+            ? 'from-[var(--vf-accent-primary)] to-[var(--vf-accent-hover)] border-[var(--vf-accent-active)] text-white'
+            : 'from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)]'
+        ]"
+        title="Edit text files on double-click"
+      >
+        ✏️ {{ editModeEnabled ? 'Edit Mode' : 'View Mode' }}
       </button>
     </div>
 

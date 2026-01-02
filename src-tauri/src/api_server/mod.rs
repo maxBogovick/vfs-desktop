@@ -71,6 +71,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/files/rename", post(handlers::files::rename_item))
         .route("/files", delete(handlers::files::delete_items))
         .route("/files/content", get(handlers::files::read_file_content))
+        .route("/files/content", post(handlers::files::write_file_content))
         .route("/files/open", post(handlers::files::open_file))
         .route("/files/reveal", post(handlers::files::reveal_in_finder))
 

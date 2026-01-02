@@ -107,6 +107,10 @@ pub trait FileSystem: Send + Sync {
     /// Для изображений возвращает base64, для текстовых файлов - строку
     fn read_file_content(&self, path: &str, max_size: Option<u64>) -> FileSystemResult<String>;
 
+    /// Запись содержимого в файл
+    /// Перезаписывает существующий файл или создает новый
+    fn write_file_content(&self, path: &str, content: &str) -> FileSystemResult<()>;
+
     /// Открытие файла в системном приложении
     fn open_file(&self, path: &str) -> FileSystemResult<()>;
 

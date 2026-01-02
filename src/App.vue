@@ -21,6 +21,7 @@ import BatchOperationsQueue from './components/BatchOperationsQueue.vue';
 import Terminal from './components/Terminal.vue';
 import ProgrammerToolbar from './components/ProgrammerToolbar.vue';
 import PanelToolbar from './components/PanelToolbar.vue';
+import TextEditor from './components/TextEditor.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useNavigation } from './composables/useNavigation';
@@ -32,6 +33,7 @@ import { useDialogs } from './composables/useDialogs';
 import { useFileOperations } from './composables/useFileOperations';
 import { useCommands } from './composables/useCommands';
 import { useNotifications } from './composables/useNotifications';
+import { useFileContentCache } from './composables/useFileContentCache';
 import { useBookmarks } from './composables/useBookmarks';
 import { useUIState } from './composables/useUIState';
 import { useSwipeNavigation } from './composables/useSwipeNavigation';
@@ -49,7 +51,7 @@ import { createKeyboardShortcuts } from './utils/shortcuts';
 import type { FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange } from './types';
 
 // File System
-const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory } = useFileSystem();
+const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory, writeFileContent } = useFileSystem();
 
 // Navigation
 const {
@@ -145,6 +147,7 @@ const {
   previewWidth,
   expandedFolders,
   sidebarSectionsExpanded,
+  editModeEnabled,
   loadUIState,
 } = useUIState();
 
@@ -298,6 +301,8 @@ const showBatchRenameDialog = ref(false);
 const showBatchAttributeDialog = ref(false);
 const showBatchQueue = ref(false);
 const batchOperationFiles = ref<FileItem[]>([]);
+const showTextEditor = ref(false);
+const editorFile = ref<FileItem | null>(null);
 
 // Inline File Creator state
 const showInlineCreator = ref(false);
@@ -367,9 +372,15 @@ const handleItemDoubleClick = (item: FileItem) => {
     const pathParts = item.path.split('/').filter(p => p);
     navigateTo(pathParts);
   } else {
-    previewFile.value = item;
-    // Close dashboard when opening preview
-    showDashboard.value = false;
+    // Check if edit mode is enabled and file is text/code
+    const isEditableFile = item.type === 'file' || item.type === 'code';
+    if (editModeEnabled.value && isEditableFile) {
+      handleEditFile(item);
+    } else {
+      previewFile.value = item;
+      // Close dashboard when opening preview
+      showDashboard.value = false;
+    }
   }
 };
 
@@ -690,6 +701,10 @@ const handleToggleHidden = () => {
   showHidden.value = !showHidden.value;
 };
 
+const handleToggleEditMode = () => {
+  editModeEnabled.value = !editModeEnabled.value;
+};
+
 const executeCommand = (cmd: { id: string }) => {
   if (cmd.id === 'copy-path') {
     commands.copyPathCommand(getSelected());
@@ -930,11 +945,46 @@ useSwipeNavigation({
   },
 });
 
+// Text editor handlers
+const handleEditFile = (file: FileItem) => {
+  editorFile.value = file;
+  showTextEditor.value = true;
+};
+
+const handleCloseEditor = () => {
+  showTextEditor.value = false;
+  editorFile.value = null;
+};
+
+const handleSaveFile = async (content: string) => {
+  const { success, error } = useNotifications();
+  const { invalidate } = useFileContentCache();
+  if (!editorFile.value) return;
+
+  try {
+    await writeFileContent(editorFile.value.path, content);
+    // Invalidate cache for this file so next time it loads fresh content
+    invalidate(editorFile.value.path);
+    success('File saved', `Saved: ${editorFile.value.name}`);
+    showTextEditor.value = false;
+    editorFile.value = null;
+    // Refresh directory to show updated file
+    await refreshCurrentDirectory();
+  } catch (err) {
+    error('Failed to save file', err instanceof Error ? err.message : 'Unknown error');
+  }
+};
+
 // Context menu handlers (work in both single and dual modes)
 const contextMenuHandlers = {
   open: () => {
     if (contextMenu.value?.item) {
       fileOps.handleOpenFile(contextMenu.value.item);
+    }
+  },
+  edit: () => {
+    if (contextMenu.value?.item) {
+      handleEditFile(contextMenu.value.item);
     }
   },
   copy: () => {
@@ -1144,6 +1194,7 @@ watch([
       },
       terminal_height: terminalHeight.value,
       terminal_visible: isTerminalVisible.value,
+      edit_mode_enabled: editModeEnabled.value,
     };
 
     console.log('[App] 💾 Saving state with sidebar:', stateToSave.sidebar);
@@ -1320,6 +1371,7 @@ onMounted(async () => {
               :sort-by="sortBy"
               :sort-order="sortOrder"
               :show-hidden="showHidden"
+              :edit-mode-enabled="editModeEnabled"
               @switch-tab="(id) => activeTabId = id"
               @close-tab="closeTab"
               @add-tab="addTab"
@@ -1328,6 +1380,7 @@ onMounted(async () => {
               @invert-selection="handleInvertSelection"
               @refresh="handleRefresh"
               @toggle-hidden="handleToggleHidden"
+              @toggle-edit-mode="handleToggleEditMode"
               @navigate-to-breadcrumb="navigateToBreadcrumb"
           />
 
@@ -1412,6 +1465,7 @@ onMounted(async () => {
         :item="contextMenu.item"
         :selected-count="selectedCount"
         @open="contextMenuHandlers.open"
+        @edit="contextMenuHandlers.edit"
         @copy="contextMenuHandlers.copy"
         @cut="contextMenuHandlers.cut"
         @paste="contextMenuHandlers.paste"
@@ -1505,6 +1559,14 @@ onMounted(async () => {
 
     <!-- File Operations Progress -->
     <OperationsProgress />
+
+    <!-- Text Editor -->
+    <TextEditor
+      :file="editorFile"
+      :is-open="showTextEditor"
+      @close="handleCloseEditor"
+      @save="handleSaveFile"
+    />
 
     <!-- Status Bar -->
     <div class="h-[20px] bg-[var(--vf-bg-secondary)] border-t border-[var(--vf-border-default)] px-2 flex items-center text-[11px]">

@@ -158,6 +158,7 @@ export interface UIState {
   sidebar: SidebarState;
   terminal_height?: number;
   terminal_visible?: boolean;
+  edit_mode_enabled?: boolean;
 }
 
 export interface AppConfig {
