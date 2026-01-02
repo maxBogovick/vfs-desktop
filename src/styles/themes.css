@@ -1,0 +1,96 @@
+/**
+ * Theme System CSS Variables
+ * Defines CSS variables that are dynamically set by useTheme composable
+ */
+
+:root {
+  /* Background colors */
+  --vf-bg-primary: #ECE9D8;
+  --vf-bg-secondary: #F1EFE2;
+  --vf-bg-tertiary: #E3DED4;
+
+  /* Surface colors (for cards, panels, etc.) */
+  --vf-surface-default: #FFFFFF;
+  --vf-surface-hover: #C1D2EE;
+  --vf-surface-selected: #C1D2EE;
+  --vf-surface-active: #0A246A;
+
+  /* Text colors */
+  --vf-text-primary: #0B0B0B;
+  --vf-text-secondary: #555555;
+  --vf-text-tertiary: #666666;
+  --vf-text-disabled: #999999;
+
+  /* Accent colors */
+  --vf-accent-primary: #0054E3;
+  --vf-accent-hover: #0A246A;
+  --vf-accent-active: #001A4D;
+
+  /* Border colors */
+  --vf-border-default: #919B9C;
+  --vf-border-subtle: #C0C0C0;
+  --vf-border-accent: #0054E3;
+
+  /* Shadow colors */
+  --vf-shadow-sm: rgba(0, 0, 0, 0.1);
+  --vf-shadow-md: rgba(0, 0, 0, 0.15);
+  --vf-shadow-lg: rgba(0, 0, 0, 0.2);
+
+  /* Gradient colors */
+  --vf-gradient-from: #0054E3;
+  --vf-gradient-to: #0A246A;
+}
+
+/* Smooth transitions for theme changes */
+* {
+  transition-property: background-color, color, border-color;
+  transition-duration: 200ms;
+  transition-timing-function: ease;
+}
+
+/* Disable transitions for elements that shouldn't animate */
+.no-transition,
+.no-transition * {
+  transition: none !important;
+}
+
+/* Theme-specific overrides */
+[data-theme="dark"] {
+  /* Any dark theme specific CSS that can't be handled by variables */
+  color-scheme: dark;
+}
+
+[data-theme="luna"],
+[data-theme="classic"],
+[data-theme="royale"],
+[data-theme="silver"] {
+  /* Light themes */
+  color-scheme: light;
+}
+
+/* Scrollbar theming */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vf-border-default);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vf-border-accent);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--vf-surface-hover);
+}
+
+[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--vf-accent-primary);
+}

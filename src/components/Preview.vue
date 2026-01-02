@@ -142,7 +142,7 @@ watch(() => props.file, async (newFile, oldFile) => {
   <transition name="slide-right">
     <div
       v-if="file"
-      class="bg-gradient-to-b from-[#C1D9F4] to-[#A5C8E1] border-l border-[#919B9C] flex flex-col overflow-hidden relative"
+      class="bg-gradient-to-b from-[var(--vf-surface-selected)] to-[var(--vf-surface-hover)] border-l border-[var(--vf-border-default)] flex flex-col overflow-hidden relative"
       :style="{ width: `${width}px` }"
     >
       <!-- Resizer Handle -->
@@ -152,11 +152,11 @@ watch(() => props.file, async (newFile, oldFile) => {
         :class="{ 'bg-blue-500': isResizing }"
       ></div>
       <!-- Header -->
-      <div class="flex justify-between items-center p-3 border-b border-[#8BA5C7]">
-        <div class="text-[12px] font-bold text-[#003D7A]">File Preview</div>
+      <div class="flex justify-between items-center p-3 border-b border-[var(--vf-border-accent)]">
+        <div class="text-[12px] font-bold text-[var(--vf-accent-hover)]">File Preview</div>
         <button
           @click="emit('close')"
-          class="text-[#003D7A] hover:text-[#0054E3] text-lg leading-none w-5 h-5 flex items-center justify-center hover:bg-white/30 rounded"
+          class="text-[var(--vf-accent-hover)] hover:text-[var(--vf-accent-primary)] text-lg leading-none w-5 h-5 flex items-center justify-center hover:bg-white/30 rounded"
         >
           ✕
         </button>
@@ -165,7 +165,7 @@ watch(() => props.file, async (newFile, oldFile) => {
       <!-- Content -->
       <div class="flex-1 overflow-y-auto p-3">
         <!-- File Content Preview -->
-        <div class="bg-white rounded-lg p-4 mb-3 shadow-inner">
+        <div class="bg-[var(--vf-surface-default)] rounded-lg p-4 mb-3 shadow-inner">
           <!-- Loading state -->
           <div v-if="isLoadingContent" class="w-full h-32 flex items-center justify-center">
             <div class="text-center">
@@ -206,43 +206,43 @@ watch(() => props.file, async (newFile, oldFile) => {
         <div class="space-y-3">
           <!-- Name -->
           <div class="bg-white/20 rounded p-2">
-            <div class="text-[9px] text-[#003D7A] font-bold mb-1 uppercase tracking-wide">Name</div>
-            <div class="text-[11px] text-[#003D7A] font-bold break-words">{{ file.name }}</div>
+            <div class="text-[9px] text-[var(--vf-accent-hover)] font-bold mb-1 uppercase tracking-wide">Name</div>
+            <div class="text-[11px] text-[var(--vf-accent-hover)] font-bold break-words">{{ file.name }}</div>
           </div>
 
           <!-- Type -->
           <div class="bg-white/20 rounded p-2">
-            <div class="text-[9px] text-[#003D7A] font-bold mb-1 uppercase tracking-wide">Type</div>
-            <div class="text-[11px] text-[#003D7A]">{{ file.type }}</div>
+            <div class="text-[9px] text-[var(--vf-accent-hover)] font-bold mb-1 uppercase tracking-wide">Type</div>
+            <div class="text-[11px] text-[var(--vf-accent-hover)]">{{ file.type }}</div>
           </div>
 
           <!-- Size -->
           <div v-if="file.sizeFormatted" class="bg-white/20 rounded p-2">
-            <div class="text-[9px] text-[#003D7A] font-bold mb-1 uppercase tracking-wide">Size</div>
-            <div class="text-[11px] text-[#003D7A]">{{ file.sizeFormatted }}</div>
+            <div class="text-[9px] text-[var(--vf-accent-hover)] font-bold mb-1 uppercase tracking-wide">Size</div>
+            <div class="text-[11px] text-[var(--vf-accent-hover)]">{{ file.sizeFormatted }}</div>
           </div>
 
           <!-- Modified Date -->
           <div v-if="file.modified" class="bg-white/20 rounded p-2">
-            <div class="text-[9px] text-[#003D7A] font-bold mb-1 uppercase tracking-wide">Modified</div>
-            <div class="text-[11px] text-[#003D7A]">{{ file.modified }}</div>
+            <div class="text-[9px] text-[var(--vf-accent-hover)] font-bold mb-1 uppercase tracking-wide">Modified</div>
+            <div class="text-[11px] text-[var(--vf-accent-hover)]">{{ file.modified }}</div>
           </div>
 
           <!-- Created Date -->
           <div v-if="file.created" class="bg-white/20 rounded p-2">
-            <div class="text-[9px] text-[#003D7A] font-bold mb-1 uppercase tracking-wide">Created</div>
-            <div class="text-[11px] text-[#003D7A]">{{ file.created }}</div>
+            <div class="text-[9px] text-[var(--vf-accent-hover)] font-bold mb-1 uppercase tracking-wide">Created</div>
+            <div class="text-[11px] text-[var(--vf-accent-hover)]">{{ file.created }}</div>
           </div>
 
           <!-- Path -->
           <div class="bg-white/20 rounded p-2">
-            <div class="text-[9px] text-[#003D7A] font-bold mb-1 uppercase tracking-wide">Location</div>
-            <div class="text-[10px] text-[#003D7A] break-all">{{ file.path }}</div>
+            <div class="text-[9px] text-[var(--vf-accent-hover)] font-bold mb-1 uppercase tracking-wide">Location</div>
+            <div class="text-[10px] text-[var(--vf-accent-hover)] break-all">{{ file.path }}</div>
           </div>
 
           <!-- Tags -->
           <div v-if="file.tags && file.tags.length > 0" class="bg-white/20 rounded p-2">
-            <div class="text-[9px] text-[#003D7A] font-bold mb-2 uppercase tracking-wide">Tags</div>
+            <div class="text-[9px] text-[var(--vf-accent-hover)] font-bold mb-2 uppercase tracking-wide">Tags</div>
             <div class="flex flex-wrap gap-1.5">
               <span
                 v-for="tag in file.tags"
@@ -256,7 +256,7 @@ watch(() => props.file, async (newFile, oldFile) => {
 
           <!-- Permissions -->
           <div v-if="file.permissions" class="bg-white/20 rounded p-2">
-            <div class="text-[9px] text-[#003D7A] font-bold mb-2 uppercase tracking-wide">Permissions</div>
+            <div class="text-[9px] text-[var(--vf-accent-hover)] font-bold mb-2 uppercase tracking-wide">Permissions</div>
             <div class="flex gap-2 text-[10px]">
               <span :class="file.permissions.readable ? 'text-green-700' : 'text-gray-400'">
                 {{ file.permissions.readable ? '✓' : '✗' }} Read
@@ -273,16 +273,16 @@ watch(() => props.file, async (newFile, oldFile) => {
       </div>
 
       <!-- Actions -->
-      <div class="p-3 border-t border-[#8BA5C7] bg-white/10">
+      <div class="p-3 border-t border-[var(--vf-border-accent)] bg-white/10">
         <div class="grid grid-cols-2 gap-2">
           <button
             @click="emit('open', file)"
-            class="bg-[#0A246A] text-white py-2 rounded text-xs font-bold hover:bg-[#0054E3] shadow-md transition-colors"
+            class="bg-[var(--vf-accent-hover)] text-white py-2 rounded text-xs font-bold hover:bg-[var(--vf-accent-primary)] shadow-md transition-colors"
           >
             Open
           </button>
           <button
-            class="bg-white/90 border border-[#8BA5C7] text-[#003D7A] py-2 rounded text-xs font-bold hover:bg-white transition-colors"
+            class="bg-white/90 border border-[var(--vf-border-accent)] text-[var(--vf-accent-hover)] py-2 rounded text-xs font-bold hover:bg-white transition-colors"
           >
             Properties
           </button>

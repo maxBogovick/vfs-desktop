@@ -112,9 +112,7 @@ const isFocused = (itemId: string) => {
 </script>
 
 <template>
-  <div class="flex-1 p-4 overflow-y-auto bg-white min-h-full relative"
-    @dragover="emit('dragOverBackground', $event)"
-    @drop.stop="emit('dropOnBackground', $event)">
+  <div class="flex-1 p-4 overflow-y-auto bg-[var(--vf-surface-default)] min-h-full relative">
     <!-- Inline File Creator -->
     <InlineFileCreator
       :is-open="showInlineCreator"
@@ -148,7 +146,7 @@ const isFocused = (itemId: string) => {
         <div
           v-if="groups.length > 1 || group.id !== 'all'"
           @click="toggleGroupCollapse(group.id)"
-          class="flex items-center gap-2 mb-2 py-2 px-3 bg-gradient-to-r from-[#F1EFE2] to-[#ECE9D8] border-b-2 cursor-pointer hover:from-[#E8E3D4] hover:to-[#E0DBD0] transition-colors sticky top-0 z-10 shadow-sm"
+          class="flex items-center gap-2 mb-2 py-2 px-3 bg-gradient-to-r from-[var(--vf-bg-secondary)] to-[var(--vf-bg-primary)] border-b-2 cursor-pointer hover:from-[var(--vf-bg-tertiary)] hover:to-[var(--vf-bg-tertiary)] transition-colors sticky top-0 z-10 shadow-sm"
           :style="{ borderColor: group.color }"
         >
           <!-- Collapse Toggle -->
@@ -166,7 +164,7 @@ const isFocused = (itemId: string) => {
 
           <!-- Group Icon & Name -->
           <span class="text-base">{{ group.icon }}</span>
-          <span class="text-xs font-bold text-[#0b0b0b] uppercase tracking-wide">{{ group.name }}</span>
+          <span class="text-xs font-bold text-[var(--vf-text-primary)] uppercase tracking-wide">{{ group.name }}</span>
 
           <!-- Item Count -->
           <span class="ml-auto text-[10px] text-gray-600 font-medium px-2 py-0.5 bg-white/60 rounded-full">
@@ -190,8 +188,8 @@ const isFocused = (itemId: string) => {
             @contextmenu="emit('itemContextMenu', item, $event)"
             :class="[
               'flex flex-col items-center justify-center p-3 rounded cursor-pointer transition-all relative',
-              selectedIds.has(item.id) ? 'bg-[#C1D2EE] border border-[#0A246A]' : 'hover:bg-[#E8F2FD] border border-transparent hover:border-[#C1D2EE]',
-              isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[#0054E3] ring-inset',
+              selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)] border border-transparent hover:border-[var(--vf-surface-hover)]',
+              isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[var(--vf-accent-primary)] ring-inset',
               isDragTarget(item.id) && 'ring-2 ring-blue-400 bg-blue-50',
               isBeingDragged(item.id) && 'opacity-50',
             ]"
@@ -223,8 +221,8 @@ const isFocused = (itemId: string) => {
             @contextmenu="emit('itemContextMenu', item, $event)"
             :class="[
               'flex items-center gap-3 px-2 py-1 rounded cursor-pointer transition-all',
-              selectedIds.has(item.id) ? 'bg-[#C1D2EE] border border-[#0A246A]' : 'hover:bg-[#E8F2FD]',
-              isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[#0054E3] ring-inset',
+              selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',
+              isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[var(--vf-accent-primary)] ring-inset',
               isDragTarget(item.id) && 'ring-2 ring-blue-400 bg-blue-50',
               isBeingDragged(item.id) && 'opacity-50',
             ]"
@@ -265,8 +263,8 @@ const isFocused = (itemId: string) => {
         @contextmenu="emit('itemContextMenu', item, $event)"
         :class="[
           'flex flex-col items-center justify-center p-3 rounded cursor-pointer transition-all relative',
-          selectedIds.has(item.id) ? 'bg-[#C1D2EE] border border-[#0A246A]' : 'hover:bg-[#E8F2FD] border border-transparent hover:border-[#C1D2EE]',
-          isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[#0054E3] ring-inset',
+          selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)] border border-transparent hover:border-[var(--vf-surface-hover)]',
+          isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[var(--vf-accent-primary)] ring-inset',
           isDragTarget(item.id) && 'ring-2 ring-blue-400 bg-blue-50',
           isBeingDragged(item.id) && 'opacity-50',
         ]"
@@ -276,7 +274,7 @@ const isFocused = (itemId: string) => {
           type="checkbox"
           :checked="selectedIds.has(item.id)"
           @click.stop="emit('toggleSelection', item)"
-          class="absolute top-1 left-1 w-4 h-4 cursor-pointer accent-[#0054E3]"
+          class="absolute top-1 left-1 w-4 h-4 cursor-pointer accent-[var(--vf-accent-primary)]"
         />
 
         <!-- Action Icons (top-right corner, visible on selection or focus) -->
@@ -360,10 +358,10 @@ const isFocused = (itemId: string) => {
 
     <!-- List View -->
     <div v-else-if="viewMode === 'list'" class="space-y-0.5">
-      <div
-        v-for="item in items"
-        :key="item.id"
-        draggable="true"
+        <div
+          v-for="item in items"
+          :key="item.id"
+          draggable="true"
         @dragstart="emit('dragStart', item, $event)"
         @dragend="emit('dragEnd')"
         @dragover.stop="emit('dragOver', item, $event)"
@@ -374,8 +372,8 @@ const isFocused = (itemId: string) => {
         @contextmenu="emit('itemContextMenu', item, $event)"
         :class="[
           'flex items-center gap-3 px-3 py-2 rounded cursor-pointer transition-all group',
-          selectedIds.has(item.id) ? 'bg-[#C1D2EE] border border-[#0A246A]' : 'hover:bg-[#E8F2FD]',
-          isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[#0054E3] ring-inset',
+          selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',
+          isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[var(--vf-accent-primary)] ring-inset',
           isDragTarget(item.id) && 'ring-2 ring-blue-400 bg-blue-50',
           isBeingDragged(item.id) && 'opacity-50',
         ]"
@@ -385,7 +383,7 @@ const isFocused = (itemId: string) => {
           type="checkbox"
           :checked="selectedIds.has(item.id)"
           @click.stop="emit('toggleSelection', item)"
-          class="w-4 h-4 flex-shrink-0 cursor-pointer accent-[#0054E3]"
+          class="w-4 h-4 flex-shrink-0 cursor-pointer accent-[var(--vf-accent-primary)]"
         />
 
         <!-- Icon -->
@@ -481,13 +479,13 @@ const isFocused = (itemId: string) => {
     <!-- Details View (Advanced table view) -->
     <div v-else-if="viewMode === 'details'" class="w-full">
       <table class="w-full text-[11px]">
-        <thead class="bg-[#F1EFE2] border-b border-[#919B9C] sticky top-0">
+        <thead class="bg-[var(--vf-bg-secondary)] border-b border-[var(--vf-border-default)] sticky top-0 z-10">
           <tr>
-            <th class="text-left px-3 py-2 font-normal">Name</th>
-            <th class="text-left px-3 py-2 font-normal w-24">Modified</th>
-            <th class="text-left px-3 py-2 font-normal w-20">Type</th>
-            <th class="text-right px-3 py-2 font-normal w-20">Size</th>
-            <th class="text-left px-3 py-2 font-normal w-24">Tags</th>
+            <th class="text-left px-3 py-2 font-bold text-[11px]">Name</th>
+            <th class="text-left px-3 py-2 w-24 font-bold text-[10px]">Modified</th>
+            <th class="text-left px-3 py-2 w-20 font-bold text-[10px]">Type</th>
+            <th class="text-right px-3 py-2 w-20 font-bold text-[10px]">Size</th>
+            <th class="text-left px-3 py-2 w-24 font-bold text-[10px]">Tags</th>
           </tr>
         </thead>
         <tbody>
@@ -504,7 +502,7 @@ const isFocused = (itemId: string) => {
             @contextmenu="emit('itemContextMenu', item, $event)"
             :class="[
               'cursor-pointer transition-all',
-              selectedIds.has(item.id) ? 'bg-[#C1D2EE]' : 'hover:bg-[#E8F2FD]',
+              selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',
               isDragTarget(item.id) && 'ring-2 ring-blue-400 bg-blue-50',
               isBeingDragged(item.id) && 'opacity-50',
             ]"

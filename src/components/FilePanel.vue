@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
 import PanelToolbar from './PanelToolbar.vue';
 import FileList from './FileList.vue';
 import { useFileSystem } from '../composables/useFileSystem';
@@ -28,6 +28,11 @@ interface Emits {
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
+// Sorting state
+const sortBy = ref<'name' | 'size' | 'modified' | 'type'>('name');
+const sortOrder = ref<'asc' | 'desc'>('asc');
+const showHidden = ref(false);
+
 // File System
 const {
   files,
@@ -36,6 +41,47 @@ const {
   copyItems,
   moveItems
 } = useFileSystem();
+
+// Computed: Sorted and filtered files
+const sortedFiles = computed(() => {
+  let result = [...files.value];
+
+  // Filter hidden files if needed
+  if (!showHidden.value) {
+    result = result.filter(file => !file.name.startsWith('.'));
+  }
+
+  // Sort files
+  result.sort((a, b) => {
+    // Folders first
+    const aIsFolder = a.type === 'folder' || a.type === 'drive' || a.type === 'system';
+    const bIsFolder = b.type === 'folder' || b.type === 'drive' || b.type === 'system';
+
+    if (aIsFolder && !bIsFolder) return -1;
+    if (!aIsFolder && bIsFolder) return 1;
+
+    // Then sort by selected field
+    let comparison = 0;
+    switch (sortBy.value) {
+      case 'name':
+        comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+        break;
+      case 'size':
+        comparison = (a.size || 0) - (b.size || 0);
+        break;
+      case 'modified':
+        comparison = (a.modified || '').localeCompare(b.modified || '');
+        break;
+      case 'type':
+        comparison = a.type.localeCompare(b.type);
+        break;
+    }
+
+    return sortOrder.value === 'asc' ? comparison : -comparison;
+  });
+
+  return result;
+});
 
 // Selection
 const {
@@ -415,6 +461,57 @@ const handleOpenTerminal = async (item: FileItem) => {
   }
 };
 
+// Toolbar action handlers
+const handleSort = (field: 'name' | 'size' | 'modified' | 'type', order: 'asc' | 'desc') => {
+  if (!props.isActive) {
+    emit('activate');
+  }
+  sortBy.value = field;
+  sortOrder.value = order;
+};
+
+const handleSelectAll = () => {
+  if (!props.isActive) {
+    emit('activate');
+  }
+  files.value.forEach(file => selectedIds.value.add(file.id));
+};
+
+const handleInvertSelection = () => {
+  if (!props.isActive) {
+    emit('activate');
+  }
+  const newSelection = new Set<string>();
+  files.value.forEach(file => {
+    if (!selectedIds.value.has(file.id)) {
+      newSelection.add(file.id);
+    }
+  });
+  selectedIds.value = newSelection;
+};
+
+const handleRefresh = async () => {
+  if (!props.isActive) {
+    emit('activate');
+  }
+  await refreshCurrentDirectory();
+};
+
+const handleToggleHidden = () => {
+  if (!props.isActive) {
+    emit('activate');
+  }
+  showHidden.value = !showHidden.value;
+};
+
+const handleNavigateToBreadcrumb = (index: number) => {
+  if (!props.isActive) {
+    emit('activate');
+  }
+  const newPath = currentPath.value.slice(0, index + 1);
+  updateTabPath(newPath);
+};
+
 // Register panel methods when it becomes active (for keyboard shortcuts in dual mode)
 watch(() => props.isActive, (isActive) => {
   if (isActive) {
@@ -554,14 +651,24 @@ watch(() => props.isActive, (isActive) => {
     <PanelToolbar
         :tabs="tabs"
         :active-tab-id="activeTabId"
+        :current-path="currentPath"
+        :sort-by="sortBy"
+        :sort-order="sortOrder"
+        :show-hidden="showHidden"
         @switch-tab="handleSwitchTab"
         @close-tab="handleCloseTab"
         @add-tab="handleAddTab"
+        @sort="handleSort"
+        @select-all="handleSelectAll"
+        @invert-selection="handleInvertSelection"
+        @refresh="handleRefresh"
+        @toggle-hidden="handleToggleHidden"
+        @navigate-to-breadcrumb="handleNavigateToBreadcrumb"
     />
 
     <!-- File List -->
     <FileList
-        :items="files"
+        :items="sortedFiles"
         :view-mode="viewMode"
         :selected-ids="selectedIds"
         :focused-id="focusedId"

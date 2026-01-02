@@ -60,18 +60,18 @@ const handleKeydown = (event: KeyboardEvent) => {
     @click.self="handleCancel"
   >
     <div
-      class="bg-[#ECE9D8] border-2 border-t-white border-l-white border-r-[#404040] border-b-[#404040] shadow-lg"
+      class="bg-[var(--vf-bg-primary)] border-2 border-t-white border-l-white border-r-[#404040] border-b-[#404040] shadow-lg"
       style="width: 400px"
       @click.stop
     >
       <!-- Title Bar -->
-      <div class="bg-gradient-to-r from-[#0A246A] to-[#A6CAF0] px-2 py-1 flex items-center justify-between">
+      <div class="bg-gradient-to-r from-[var(--vf-accent-hover)] to-[var(--vf-surface-hover)] px-2 py-1 flex items-center justify-between">
         <div class="flex items-center gap-2">
           <span class="text-white text-[11px] font-bold">{{ title }}</span>
         </div>
         <button
           @click="handleCancel"
-          class="w-4 h-4 bg-[#ECE9D8] border border-t-white border-l-white border-r-[#404040] border-b-[#404040] flex items-center justify-center text-[10px] hover:bg-[#DDD] active:border-t-[#404040] active:border-l-[#404040] active:border-r-white active:border-b-white"
+          class="w-4 h-4 bg-[var(--vf-bg-primary)] border border-t-white border-l-white border-r-[#404040] border-b-[#404040] flex items-center justify-center text-[10px] hover:bg-[var(--vf-surface-hover)] active:border-t-[#404040] active:border-l-[#404040] active:border-r-white active:border-b-white"
         >
           ✕
         </button>
@@ -86,7 +86,7 @@ const handleKeydown = (event: KeyboardEvent) => {
           type="text"
           :placeholder="placeholder"
           @keydown="handleKeydown"
-          class="w-full px-2 py-1 text-[11px] border border-[#7F9DB9] focus:outline-none focus:border-[#0A246A]"
+          class="w-full px-2 py-1 text-[11px] border border-[var(--vf-border-accent)] focus:outline-none focus:border-[var(--vf-accent-hover)]"
         />
       </div>
 
@@ -94,13 +94,13 @@ const handleKeydown = (event: KeyboardEvent) => {
       <div class="px-4 pb-4 flex justify-end gap-2">
         <button
           @click="handleConfirm"
-          class="px-4 py-1 text-[11px] bg-[#ECE9D8] border-2 border-t-white border-l-white border-r-[#404040] border-b-[#404040] hover:bg-[#DDD] active:border-t-[#404040] active:border-l-[#404040] active:border-r-white active:border-b-white min-w-[75px]"
+          class="px-4 py-1 text-[11px] bg-[var(--vf-bg-primary)] border-2 border-t-white border-l-white border-r-[#404040] border-b-[#404040] hover:bg-[var(--vf-surface-hover)] active:border-t-[#404040] active:border-l-[#404040] active:border-r-white active:border-b-white min-w-[75px]"
         >
           OK
         </button>
         <button
           @click="handleCancel"
-          class="px-4 py-1 text-[11px] bg-[#ECE9D8] border-2 border-t-white border-l-white border-r-[#404040] border-b-[#404040] hover:bg-[#DDD] active:border-t-[#404040] active:border-l-[#404040] active:border-r-white active:border-b-white min-w-[75px]"
+          class="px-4 py-1 text-[11px] bg-[var(--vf-bg-primary)] border-2 border-t-white border-l-white border-r-[#404040] border-b-[#404040] hover:bg-[var(--vf-surface-hover)] active:border-t-[#404040] active:border-l-[#404040] active:border-r-white active:border-b-white min-w-[75px]"
         >
           Cancel
         </button>

@@ -183,13 +183,13 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="bg-white border-r border-[#919B9C] overflow-y-auto flex-shrink-0 relative" :style="{ width: `${width}px` }">
+  <div class="bg-[var(--vf-surface-default)] border-r border-[var(--vf-border-default)] overflow-y-auto flex-shrink-0 relative" :style="{ width: `${width}px` }">
     <div class="p-2">
       <!-- Quick Access -->
       <div class="mb-2">
         <div
           @click="toggleSection('quickAccess')"
-          class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[#C1D2EE] cursor-pointer rounded"
+          class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[var(--vf-surface-hover)] cursor-pointer rounded"
         >
           <span class="text-xs">{{ sidebarSectionsExpanded.quickAccess ? '▼' : '▶' }}</span>
           <span class="text-base">⭐</span>
@@ -202,7 +202,7 @@ onMounted(async () => {
               v-for="folder in systemFolders.slice(0, 4)"
               :key="folder.id"
               @click="navigateTo(folder.path)"
-              class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[#C1D2EE] cursor-pointer rounded"
+              class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[var(--vf-surface-hover)] cursor-pointer rounded"
             >
               <span class="text-sm">{{ getFileIcon(folder) }}</span>
               <span class="text-[11px] truncate">{{ folder.name }}</span>
@@ -211,13 +211,13 @@ onMounted(async () => {
         </transition>
       </div>
 
-      <div class="border-t border-[#D0D0BF] my-2"></div>
+      <div class="border-t border-[var(--vf-border-subtle)] my-2"></div>
 
       <!-- Folder Tree -->
       <div class="mb-2">
         <div
           @click="toggleSection('folderTree')"
-          class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[#C1D2EE] cursor-pointer rounded"
+          class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[var(--vf-surface-hover)] cursor-pointer rounded"
         >
           <span class="text-xs">{{ sidebarSectionsExpanded.folderTree ? '▼' : '▶' }}</span>
           <span class="text-base">💾</span>
@@ -242,13 +242,13 @@ onMounted(async () => {
         </transition>
       </div>
 
-      <div class="border-t border-[#D0D0BF] my-2"></div>
+      <div class="border-t border-[var(--vf-border-subtle)] my-2"></div>
 
       <!-- Favorites -->
       <div>
         <div
           @click="toggleSection('favorites')"
-          class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[#C1D2EE] cursor-pointer rounded"
+          class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[var(--vf-surface-hover)] cursor-pointer rounded"
         >
           <span class="text-xs">{{ sidebarSectionsExpanded.favorites ? '▼' : '▶' }}</span>
           <span class="text-base">❤️</span>
@@ -268,7 +268,7 @@ onMounted(async () => {
               <div
                 v-for="bookmark in bookmarks"
                 :key="bookmark.id"
-                class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[#C1D2EE] cursor-pointer rounded group"
+                class="flex items-center gap-1.5 py-1.5 px-1 hover:bg-[var(--vf-surface-hover)] cursor-pointer rounded group"
                 @click="handleBookmarkClick(bookmark)"
               >
                 <span class="text-sm">📁</span>
@@ -280,7 +280,7 @@ onMounted(async () => {
                   @blur="finishEditingBookmark"
                   @keydown.enter="finishEditingBookmark"
                   @keydown.esc="cancelEditingBookmark"
-                  class="flex-1 text-[11px] px-1 py-0.5 border border-[#7B9DD9] rounded outline-none"
+                  class="flex-1 text-[11px] px-1 py-0.5 border border-[var(--vf-border-accent)] rounded outline-none"
                   autofocus
                 />
 

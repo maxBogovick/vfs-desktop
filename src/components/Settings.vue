@@ -2,6 +2,7 @@
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import type { AppConfig, FileSystemBackend, ViewMode } from '../types'
+import { useTheme } from '../composables/useTheme'
 
 const emit = defineEmits<{
   close: []
@@ -35,6 +36,11 @@ const saveSettings = async () => {
 
   try {
     await invoke('update_config', { newConfig: config.value })
+
+    // Apply theme immediately after saving
+    const { setTheme } = useTheme()
+    await setTheme(config.value.theme as any)
+
     showMessage('Settings saved successfully!', 'success')
 
     // Закрыть через небольшую задержку
@@ -60,6 +66,18 @@ const showMessage = (text: string, type: 'success' | 'error') => {
 // Отменить изменения
 const cancel = () => {
   emit('close')
+}
+
+// Get theme description
+const getThemeDescription = (theme: string): string => {
+  const descriptions: Record<string, string> = {
+    luna: 'Classic Windows XP blue theme',
+    classic: 'Windows 95/98 gray theme',
+    royale: 'Windows XP Media Center Edition theme',
+    silver: 'Windows XP Silver theme',
+    dark: 'Modern dark theme'
+  }
+  return descriptions[theme] || ''
 }
 </script>
 
@@ -136,7 +154,12 @@ const cancel = () => {
               <option value="luna">Luna (Default)</option>
               <option value="classic">Classic</option>
               <option value="royale">Royale</option>
+              <option value="silver">Silver</option>
+              <option value="dark">Dark Mode</option>
             </select>
+            <p class="setting-description">
+              {{ getThemeDescription(config.theme) }}
+            </p>
           </div>
         </div>
 
@@ -255,6 +278,13 @@ const cancel = () => {
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.setting-description {
+  margin-top: 6px;
+  font-size: 11px;
+  color: #666;
+  font-style: italic;
 }
 
 /* Radio Group */

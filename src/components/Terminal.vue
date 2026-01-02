@@ -94,6 +94,7 @@ const formatTime = (timestamp: number) => {
       <div class="flex items-center gap-2">
         <span class="text-[11px] text-[#00FF00] font-['Courier_New',monospace]">Terminal</span>
         <span class="text-[9px] text-gray-400">{{ currentPath }}</span>
+        <span class="text-[8px] text-gray-500">(30s timeout)</span>
         <span v-if="isExecuting" class="text-[9px] text-yellow-400">⏳ Executing...</span>
       </div>
       <div class="flex items-center gap-2">
@@ -156,7 +157,7 @@ const formatTime = (timestamp: number) => {
         v-model="currentCommand"
         type="text"
         class="flex-1 bg-transparent text-white text-[12px] outline-none font-['Courier_New',monospace]"
-        placeholder="Enter command..."
+        placeholder="Enter command (30s timeout, use: ping -c 4 google.com)..."
         :disabled="isExecuting"
         @keydown.enter="handleExecute"
       />

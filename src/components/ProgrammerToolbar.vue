@@ -1,0 +1,60 @@
+<script setup lang="ts">
+interface Props {
+  hasMultipleSelected: boolean;
+  isTerminalVisible: boolean;
+}
+
+interface Emits {
+  (e: 'toggle-terminal'): void;
+  (e: 'batch-rename'): void;
+  (e: 'open-ftp'): void;
+}
+
+defineProps<Props>();
+const emit = defineEmits<Emits>();
+</script>
+
+<template>
+  <div class="flex items-center h-[32px] bg-[#F1EFE2] border-b border-[#919B9C] px-2 gap-1">
+    <!-- Terminal Button -->
+    <button
+      @click="emit('toggle-terminal')"
+      :class="[
+        'flex items-center gap-1 px-2 py-1 text-[11px] border rounded',
+        isTerminalVisible
+          ? 'bg-[#C1D2EE] border-[#0A246A]'
+          : 'bg-[#ECE9D8] border-[#919B9C] hover:bg-[#C1D2EE] hover:border-[#0A246A]'
+      ]"
+      title="Toggle Terminal (Ctrl+`)"
+    >
+      <span class="text-[14px]">$</span>
+      <span>Terminal</span>
+    </button>
+
+    <!-- Batch Rename Button -->
+    <button
+      @click="emit('batch-rename')"
+      :disabled="!hasMultipleSelected"
+      :class="[
+        'flex items-center gap-1 px-2 py-1 text-[11px] border rounded',
+        hasMultipleSelected
+          ? 'bg-[#ECE9D8] border-[#919B9C] hover:bg-[#C1D2EE] hover:border-[#0A246A] cursor-pointer'
+          : 'bg-[#D4D0C8] border-[#808080] text-gray-400 cursor-not-allowed'
+      ]"
+      title="Batch Rename (requires multiple files selected)"
+    >
+      <span class="text-[14px]">📝</span>
+      <span>Batch Rename</span>
+    </button>
+
+    <!-- FTP Button -->
+    <button
+      @click="emit('open-ftp')"
+      class="flex items-center gap-1 px-2 py-1 text-[11px] border rounded bg-[#ECE9D8] border-[#919B9C] hover:bg-[#C1D2EE] hover:border-[#0A246A]"
+      title="Open FTP Connection"
+    >
+      <span class="text-[14px]">🌐</span>
+      <span>FTP</span>
+    </button>
+  </div>
+</template>

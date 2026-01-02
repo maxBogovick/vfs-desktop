@@ -40,17 +40,17 @@ const getIcon = () => {
     >
       <div
         @click.stop
-        class="bg-[#ECE9D8] rounded border-2 border-[#0054E3] shadow-2xl w-[400px] overflow-hidden animate-pop-in"
+        class="bg-[var(--vf-bg-primary)] rounded border-2 border-[var(--vf-accent-primary)] shadow-2xl w-[400px] overflow-hidden animate-pop-in"
       >
         <!-- Title Bar -->
-        <div class="bg-gradient-to-r from-[#0054E3] to-[#0A246A] h-7 flex items-center px-2 gap-2">
+        <div class="bg-gradient-to-r from-[var(--vf-accent-primary)] to-[var(--vf-accent-hover)] h-7 flex items-center px-2 gap-2">
           <div class="w-4 h-4 flex items-center justify-center text-xs">
             {{ getIcon() }}
           </div>
           <div class="flex-1 text-white font-bold text-xs">{{ title }}</div>
           <button
             @click="emit('cancel')"
-            class="w-5 h-5 bg-[#C1D2EE] hover:bg-[#FF4444] flex items-center justify-center text-[10px] font-bold border border-white/30"
+            class="w-5 h-5 bg-[var(--vf-surface-hover)] hover:bg-[#FF4444] flex items-center justify-center text-[10px] font-bold border border-white/30"
           >
             ✕
           </button>
@@ -69,7 +69,7 @@ const getIcon = () => {
           <div class="flex justify-end gap-2">
             <button
               @click="emit('cancel')"
-              class="px-4 py-1.5 bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] rounded text-xs min-w-[75px]"
+              class="px-4 py-1.5 bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] rounded text-xs min-w-[75px]"
             >
               {{ cancelText }}
             </button>
@@ -79,7 +79,7 @@ const getIcon = () => {
                 'px-4 py-1.5 border-2 rounded text-xs font-bold min-w-[75px]',
                 type === 'danger'
                   ? 'bg-gradient-to-b from-[#FF6B6B] to-[#EE5A6F] border-[#C92A2A] text-white hover:from-[#FF5252] hover:to-[#E53935]'
-                  : 'bg-gradient-to-b from-white to-[#E3DED4] border-[#0054E3] hover:bg-[#C1D2EE]'
+                  : 'bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border-[var(--vf-accent-primary)] hover:bg-[var(--vf-surface-hover)]'
               ]"
             >
               {{ confirmText }}

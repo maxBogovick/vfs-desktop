@@ -104,15 +104,15 @@ const handleCancel = () => {
     >
       <div
         @click.stop
-        class="bg-[#ECE9D8] rounded border-2 border-[#0054E3] shadow-2xl w-[600px] overflow-hidden animate-pop-in"
+        class="bg-[var(--vf-bg-primary)] rounded border-2 border-[var(--vf-accent-primary)] shadow-2xl w-[600px] overflow-hidden animate-pop-in"
       >
         <!-- Title Bar -->
-        <div class="bg-gradient-to-r from-[#0054E3] to-[#0A246A] h-7 flex items-center px-2 gap-2">
+        <div class="bg-gradient-to-r from-[var(--vf-accent-primary)] to-[var(--vf-accent-hover)] h-7 flex items-center px-2 gap-2">
           <div class="w-4 h-4 flex items-center justify-center text-xs">⚠️</div>
           <div class="flex-1 text-white font-bold text-xs">File Conflict</div>
           <button
             @click="handleCancel"
-            class="w-5 h-5 bg-[#C1D2EE] hover:bg-[#FF4444] flex items-center justify-center text-[10px] font-bold border border-white/30"
+            class="w-5 h-5 bg-[var(--vf-surface-hover)] hover:bg-[#FF4444] flex items-center justify-center text-[10px] font-bold border border-white/30"
           >
             ✕
           </button>
@@ -277,7 +277,7 @@ const handleCancel = () => {
           <div class="flex justify-end gap-2">
             <button
               @click="handleCancel"
-              class="px-4 py-1.5 bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] rounded text-xs min-w-[75px]"
+              class="px-4 py-1.5 bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] rounded text-xs min-w-[75px]"
             >
               Cancel
             </button>
@@ -288,7 +288,7 @@ const handleCancel = () => {
                 'px-4 py-1.5 border-2 rounded text-xs font-bold min-w-[75px]',
                 selectedAction === 'rename' && !newName.trim()
                   ? 'bg-gray-300 border-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-b from-[#EFF3FF] to-[#C1D2EE] border-[#003C74] hover:from-[#C1D2EE] hover:to-[#0054E3] hover:text-white active:bg-[#0A246A]',
+                  : 'bg-gradient-to-b from-[var(--vf-surface-selected)] to-[var(--vf-surface-hover)] border-[var(--vf-accent-hover)] hover:from-[var(--vf-surface-hover)] hover:to-[var(--vf-accent-primary)] hover:text-white active:bg-[var(--vf-accent-hover)]',
               ]"
             >
               Continue

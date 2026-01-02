@@ -90,25 +90,25 @@ const getFileTypeName = (type: string) => {
     >
       <div
         @click.stop
-        class="bg-[#ECE9D8] rounded border-2 border-[#0054E3] shadow-2xl w-[450px] overflow-hidden animate-pop-in"
+        class="bg-[var(--vf-bg-primary)] rounded border-2 border-[var(--vf-accent-primary)] shadow-2xl w-[450px] overflow-hidden animate-pop-in"
       >
         <!-- Title Bar -->
-        <div class="bg-gradient-to-r from-[#0054E3] to-[#0A246A] h-7 flex items-center px-2 gap-2">
+        <div class="bg-gradient-to-r from-[var(--vf-accent-primary)] to-[var(--vf-accent-hover)] h-7 flex items-center px-2 gap-2">
           <div class="w-4 h-4 flex items-center justify-center text-xs">
             {{ getFileIcon(file) }}
           </div>
           <div class="flex-1 text-white font-bold text-xs truncate">{{ file.name }} Properties</div>
           <button
             @click="emit('close')"
-            class="w-5 h-5 bg-[#C1D2EE] hover:bg-[#FF4444] flex items-center justify-center text-[10px] font-bold border border-white/30"
+            class="w-5 h-5 bg-[var(--vf-surface-hover)] hover:bg-[#FF4444] flex items-center justify-center text-[10px] font-bold border border-white/30"
           >
             ✕
           </button>
         </div>
 
         <!-- Tabs -->
-        <div class="bg-[#F1EFE2] border-b border-[#919B9C] px-2 pt-1">
-          <div class="bg-white border-t-2 border-l-2 border-r-2 border-[#919B9C] px-4 py-1 inline-block rounded-t text-xs font-bold">
+        <div class="bg-[var(--vf-bg-secondary)] border-b border-[var(--vf-border-default)] px-2 pt-1">
+          <div class="bg-[var(--vf-surface-default)] border-t-2 border-l-2 border-r-2 border-[var(--vf-border-default)] px-4 py-1 inline-block rounded-t text-xs font-bold">
             General
           </div>
         </div>
@@ -116,8 +116,8 @@ const getFileTypeName = (type: string) => {
         <!-- Content -->
         <div class="p-4 space-y-4">
           <!-- Icon and Name -->
-          <div class="flex items-start gap-4 pb-4 border-b border-[#919B9C]">
-            <div class="w-16 h-16 flex items-center justify-center text-5xl bg-white border border-[#919B9C] rounded">
+          <div class="flex items-start gap-4 pb-4 border-b border-[var(--vf-border-default)]">
+            <div class="w-16 h-16 flex items-center justify-center text-5xl bg-[var(--vf-surface-default)] border border-[var(--vf-border-default)] rounded">
               {{ getFileIcon(file) }}
             </div>
             <div class="flex-1 pt-2">
@@ -125,7 +125,7 @@ const getFileTypeName = (type: string) => {
                 type="text"
                 :value="file.name"
                 readonly
-                class="w-full px-2 py-1 border border-[#7F9DB9] text-sm font-bold bg-white"
+                class="w-full px-2 py-1 border border-[var(--vf-border-accent)] text-sm font-bold bg-[var(--vf-surface-default)]"
               />
             </div>
           </div>
@@ -161,7 +161,7 @@ const getFileTypeName = (type: string) => {
                   v-if="!recursiveSize"
                   @click="calculateFolderSize"
                   :disabled="isCalculatingSize"
-                  class="px-2 py-1 bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] rounded text-[10px] font-['Tahoma'] disabled:opacity-50"
+                  class="px-2 py-1 bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] rounded text-[10px] font-['Tahoma'] disabled:opacity-50"
                 >
                   {{ isCalculatingSize ? 'Calculating...' : 'Calculate' }}
                 </button>
@@ -174,7 +174,7 @@ const getFileTypeName = (type: string) => {
               </div>
             </div>
 
-            <div class="border-t border-[#919B9C] my-2"></div>
+            <div class="border-t border-[var(--vf-border-default)] my-2"></div>
 
             <!-- Created -->
             <div v-if="file.created" class="flex items-center gap-2">
@@ -194,7 +194,7 @@ const getFileTypeName = (type: string) => {
               <div class="flex-1 text-xs">{{ file.accessed }}</div>
             </div>
 
-            <div v-if="file.permissions" class="border-t border-[#919B9C] my-2"></div>
+            <div v-if="file.permissions" class="border-t border-[var(--vf-border-default)] my-2"></div>
 
             <!-- Permissions -->
             <div v-if="file.permissions" class="space-y-1">
@@ -216,7 +216,7 @@ const getFileTypeName = (type: string) => {
             </div>
 
             <!-- Tags -->
-            <div v-if="file.tags && file.tags.length > 0" class="border-t border-[#919B9C] my-2"></div>
+            <div v-if="file.tags && file.tags.length > 0" class="border-t border-[var(--vf-border-default)] my-2"></div>
             <div v-if="file.tags && file.tags.length > 0" class="flex items-start gap-2">
               <div class="w-24 text-xs text-gray-600">Tags:</div>
               <div class="flex-1 flex flex-wrap gap-1">
@@ -233,21 +233,21 @@ const getFileTypeName = (type: string) => {
         </div>
 
         <!-- Footer Buttons -->
-        <div class="bg-[#F1EFE2] border-t border-[#919B9C] p-3 flex justify-end gap-2">
+        <div class="bg-[var(--vf-bg-secondary)] border-t border-[var(--vf-border-default)] p-3 flex justify-end gap-2">
           <button
             @click="emit('close')"
-            class="px-4 py-1.5 bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] rounded text-xs font-['Tahoma'] min-w-[75px]"
+            class="px-4 py-1.5 bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] rounded text-xs font-['Tahoma'] min-w-[75px]"
           >
             OK
           </button>
           <button
             @click="emit('close')"
-            class="px-4 py-1.5 bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] rounded text-xs font-['Tahoma'] min-w-[75px]"
+            class="px-4 py-1.5 bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] rounded text-xs font-['Tahoma'] min-w-[75px]"
           >
             Cancel
           </button>
           <button
-            class="px-4 py-1.5 bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] rounded text-xs font-['Tahoma'] min-w-[75px]"
+            class="px-4 py-1.5 bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] rounded text-xs font-['Tahoma'] min-w-[75px]"
           >
             Apply
           </button>

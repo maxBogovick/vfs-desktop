@@ -19,6 +19,8 @@ import BatchRenameDialog from './components/BatchRenameDialog.vue';
 import BatchAttributeDialog from './components/BatchAttributeDialog.vue';
 import BatchOperationsQueue from './components/BatchOperationsQueue.vue';
 import Terminal from './components/Terminal.vue';
+import ProgrammerToolbar from './components/ProgrammerToolbar.vue';
+import PanelToolbar from './components/PanelToolbar.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useNavigation } from './composables/useNavigation';
@@ -41,6 +43,7 @@ import { useBatchOperations } from './composables/useBatchOperations';
 import { useProgrammerMode } from './composables/useProgrammerMode';
 import { useTemplates } from './composables/useTemplates';
 import { useTerminal } from './composables/useTerminal';
+import { useTheme } from './composables/useTheme';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type { FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange } from './types';
@@ -179,6 +182,16 @@ const terminalWorkingDir = computed(() => {
   return '/' + currentPath.value.join('/');
 });
 
+// Computed для определения множественного выбора
+const hasMultipleSelected = computed(() => {
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    const selected = methods?.getSelectedIds() || new Set();
+    return selected.size > 1;
+  }
+  return selectedIds.value.size > 1;
+});
+
 // Handle sidebar resize - напрямую обновляем ref, watch в App.vue сам сохранит
 const handleSidebarResize = (width: number) => {
   sidebarWidth.value = width;
@@ -273,6 +286,9 @@ const { loadTemplates } = useTemplates();
 
 // Local state
 const viewMode = ref<ViewMode>('list');
+const sortBy = ref<'name' | 'size' | 'modified' | 'type'>('name');
+const sortOrder = ref<'asc' | 'desc'>('asc');
+const showHidden = ref(false);
 const isCommandPaletteOpen = ref(false);
 const previewFile = ref<FileItem | null>(null);
 const showSettings = ref(false);
@@ -296,8 +312,48 @@ const isCurrentPathBookmarked = computed(() => {
   return isBookmarked(path);
 });
 
-// Computed
-const processedFiles = computed(() => processFiles(files.value));
+// Computed: Process, filter and sort files
+const processedFiles = computed(() => {
+  let result = processFiles(files.value);
+
+  // Filter hidden files if needed (only in single mode)
+  if (!isDualMode.value && !showHidden.value) {
+    result = result.filter(file => !file.name.startsWith('.'));
+  }
+
+  // Sort files (only in single mode, dual mode handles its own sorting)
+  if (!isDualMode.value) {
+    result = [...result].sort((a, b) => {
+      // Folders first
+      const aIsFolder = a.type === 'folder' || a.type === 'drive' || a.type === 'system';
+      const bIsFolder = b.type === 'folder' || b.type === 'drive' || b.type === 'system';
+
+      if (aIsFolder && !bIsFolder) return -1;
+      if (!aIsFolder && bIsFolder) return 1;
+
+      // Then sort by selected field
+      let comparison = 0;
+      switch (sortBy.value) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+          break;
+        case 'size':
+          comparison = (a.size || 0) - (b.size || 0);
+          break;
+        case 'modified':
+          comparison = (a.modified || '').localeCompare(b.modified || '');
+          break;
+        case 'type':
+          comparison = a.type.localeCompare(b.type);
+          break;
+      }
+
+      return sortOrder.value === 'asc' ? comparison : -comparison;
+    });
+  }
+
+  return result;
+});
 
 // File groups
 const fileGroups = computed(() => groupFiles(processedFiles.value));
@@ -605,6 +661,34 @@ const commands = useCommands({
   onCloseTab: () => commands.closeTabCommand(tabs.value.length, closeTab, activeTabId.value),
   onSettings: () => { showSettings.value = true; },
 });
+
+// Toolbar handlers (for single panel mode)
+const handleSort = (field: 'name' | 'size' | 'modified' | 'type', order: 'asc' | 'desc') => {
+  sortBy.value = field;
+  sortOrder.value = order;
+};
+
+const handleSelectAll = () => {
+  files.value.forEach(file => selectedIds.value.add(file.id));
+};
+
+const handleInvertSelection = () => {
+  const newSelection = new Set<string>();
+  files.value.forEach(file => {
+    if (!selectedIds.value.has(file.id)) {
+      newSelection.add(file.id);
+    }
+  });
+  selectedIds.value = newSelection;
+};
+
+const handleRefresh = async () => {
+  await refreshCurrentDirectory();
+};
+
+const handleToggleHidden = () => {
+  showHidden.value = !showHidden.value;
+};
 
 const executeCommand = (cmd: { id: string }) => {
   if (cmd.id === 'copy-path') {
@@ -1085,6 +1169,10 @@ const updateSystemStats = async () => {
 onMounted(async () => {
   document.addEventListener('click', closeContextMenu);
 
+  // Load and apply theme FIRST (before any other initialization)
+  const { loadTheme } = useTheme();
+  await loadTheme();
+
   // Load bookmarks
   await loadBookmarks();
 
@@ -1150,16 +1238,16 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="h-screen flex flex-col bg-[#ECE9D8] font-['Tahoma'] select-none overflow-hidden text-[#0b0b0b]">
+  <div class="h-screen flex flex-col bg-[var(--vf-bg-primary)] font-['Tahoma'] select-none overflow-hidden text-[var(--vf-text-primary)]">
     <!-- Menu Bar -->
-    <div class="flex items-center h-[21px] bg-[#F1EFE2] border-b border-[#919B9C] text-[11px]">
-      <div class="px-2 py-0.5 hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] cursor-pointer">File</div>
-      <div class="px-2 py-0.5 hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] cursor-pointer">Edit</div>
-      <div class="px-2 py-0.5 hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] cursor-pointer">View</div>
-      <div class="px-2 py-0.5 hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] cursor-pointer">Favorites</div>
-      <div class="px-2 py-0.5 hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] cursor-pointer">Tools</div>
-      <div class="px-2 py-0.5 hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] cursor-pointer">Help</div>
-      <div class="ml-auto px-2 text-[#666]">Arrows: navigate • Space: select • Enter: open • Ctrl+K: search</div>
+    <div class="flex items-center h-[21px] bg-[var(--vf-bg-secondary)] border-b border-[var(--vf-border-default)] text-[11px]">
+      <div class="px-2 py-0.5 hover:bg-[var(--vf-surface-hover)] hover:border hover:border-[var(--vf-accent-hover)] cursor-pointer">File</div>
+      <div class="px-2 py-0.5 hover:bg-[var(--vf-surface-hover)] hover:border hover:border-[var(--vf-accent-hover)] cursor-pointer">Edit</div>
+      <div class="px-2 py-0.5 hover:bg-[var(--vf-surface-hover)] hover:border hover:border-[var(--vf-accent-hover)] cursor-pointer">View</div>
+      <div class="px-2 py-0.5 hover:bg-[var(--vf-surface-hover)] hover:border hover:border-[var(--vf-accent-hover)] cursor-pointer">Favorites</div>
+      <div class="px-2 py-0.5 hover:bg-[var(--vf-surface-hover)] hover:border hover:border-[var(--vf-accent-hover)] cursor-pointer">Tools</div>
+      <div class="px-2 py-0.5 hover:bg-[var(--vf-surface-hover)] hover:border hover:border-[var(--vf-accent-hover)] cursor-pointer">Help</div>
+      <div class="ml-auto px-2 text-[var(--vf-text-tertiary)]">Arrows: navigate • Space: select • Enter: open • Ctrl+K: search</div>
     </div>
 
     <!-- Toolbar -->
@@ -1194,6 +1282,16 @@ onMounted(async () => {
         @update:group-by="(value) => groupBy = value"
     />
 
+    <!-- Programmer Toolbar (only visible in Programmer Mode) -->
+    <ProgrammerToolbar
+        v-if="isProgrammerMode"
+        :has-multiple-selected="hasMultipleSelected"
+        :is-terminal-visible="isTerminalVisible"
+        @toggle-terminal="toggleTerminal"
+        @batch-rename="showBatchRenameDialog = true"
+        @open-ftp="() => { /* TODO: implement FTP */ }"
+    />
+
     <!-- Main Content Area -->
     <div class="flex-1 flex flex-col overflow-hidden">
       <!-- File panels (flex-1) -->
@@ -1213,7 +1311,27 @@ onMounted(async () => {
         />
 
         <!-- Main Area -->
-        <div class="flex-1 flex overflow-hidden">
+        <div class="flex-1 flex flex-col overflow-hidden">
+          <!-- Panel Toolbar (for single mode) -->
+          <PanelToolbar
+              :tabs="tabs"
+              :active-tab-id="activeTabId"
+              :current-path="currentPath"
+              :sort-by="sortBy"
+              :sort-order="sortOrder"
+              :show-hidden="showHidden"
+              @switch-tab="(id) => activeTabId = id"
+              @close-tab="closeTab"
+              @add-tab="addTab"
+              @sort="handleSort"
+              @select-all="handleSelectAll"
+              @invert-selection="handleInvertSelection"
+              @refresh="handleRefresh"
+              @toggle-hidden="handleToggleHidden"
+              @navigate-to-breadcrumb="navigateToBreadcrumb"
+          />
+
+          <div class="flex-1 flex overflow-hidden">
           <!-- File List -->
           <FileList
               :items="processedFiles"
@@ -1264,6 +1382,7 @@ onMounted(async () => {
               @close="showDashboard = false"
               @resize="handleDashboardResize"
           />
+          </div>
         </div>
       </template>
       </div>
@@ -1370,13 +1489,13 @@ onMounted(async () => {
     <!-- Batch Operations Queue -->
     <div
         v-if="showBatchQueue"
-        class="fixed bottom-5 right-5 w-[500px] h-[400px] bg-white border border-gray-300 rounded-lg shadow-2xl overflow-hidden z-40"
+        class="fixed bottom-5 right-5 w-[500px] h-[400px] bg-[var(--vf-surface-default)] border border-[var(--vf-border-default)] rounded-lg shadow-2xl overflow-hidden z-40"
     >
-      <div class="flex items-center justify-between p-2 border-b border-gray-300 bg-gray-50">
+      <div class="flex items-center justify-between p-2 border-b border-[var(--vf-border-default)] bg-[var(--vf-bg-secondary)]">
         <h3 class="font-semibold text-sm">Batch Operations</h3>
         <button
           @click="showBatchQueue = false"
-          class="text-gray-500 hover:text-gray-700 text-xl leading-none"
+          class="text-[var(--vf-text-secondary)] hover:text-[var(--vf-text-primary)] text-xl leading-none"
         >
           ×
         </button>
@@ -1388,19 +1507,19 @@ onMounted(async () => {
     <OperationsProgress />
 
     <!-- Status Bar -->
-    <div class="h-[20px] bg-[#F1EFE2] border-t border-[#919B9C] px-2 flex items-center text-[11px]">
+    <div class="h-[20px] bg-[var(--vf-bg-secondary)] border-t border-[var(--vf-border-default)] px-2 flex items-center text-[11px]">
       <span>{{ processedFiles.length }} items</span>
       <span v-if="selectedCount > 0" class="ml-4">{{ selectedCount }} selected</span>
-      <span v-if="hasActiveFilters" class="ml-4 text-blue-600">🔍 Filters active</span>
+      <span v-if="hasActiveFilters" class="ml-4 text-[var(--vf-accent-primary)]">🔍 Filters active</span>
       <span v-if="isDragging" class="ml-4 text-orange-600">📋 Dragging {{ draggedItems.length }} item(s)...</span>
       <button
         v-if="hasOperations"
         @click="showBatchQueue = !showBatchQueue"
-        class="ml-4 text-blue-600 hover:text-blue-700 cursor-pointer"
+        class="ml-4 text-[var(--vf-accent-primary)] hover:text-[var(--vf-accent-hover)] cursor-pointer"
       >
         📋 Batch Operations
       </button>
-      <span class="ml-auto text-[#555]">
+      <span class="ml-auto text-[var(--vf-text-secondary)]">
         RAM: {{ systemStats.memory_mb.toFixed(1) }} MB
         <span class="ml-3">CPU: {{ systemStats.cpu_percent.toFixed(1) }}%</span>
       </span>

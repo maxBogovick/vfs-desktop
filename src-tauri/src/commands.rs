@@ -168,21 +168,49 @@ pub fn execute_command(
     command: String,
     working_dir: String,
 ) -> Result<CommandResult, String> {
-    use std::process::Command;
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+    use wait_timeout::ChildExt;
 
-    let output = Command::new("sh")
+    // Spawn the process
+    let mut child = Command::new("sh")
         .arg("-c")
         .arg(&command)
         .current_dir(&working_dir)
-        .output()
-        .map_err(|e| format!("Failed to execute command: {}", e))?;
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to start command: {}", e))?;
 
-    Ok(CommandResult {
-        stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-        stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-        exit_code: output.status.code().unwrap_or(-1),
-        success: output.status.success(),
-    })
+    // Wait with 30 second timeout
+    let timeout = Duration::from_secs(30);
+    match child.wait_timeout(timeout)
+        .map_err(|e| format!("Failed to wait for command: {}", e))? {
+        Some(_status) => {
+            // Process finished within timeout, get output
+            let output = child.wait_with_output()
+                .map_err(|e| format!("Failed to get command output: {}", e))?;
+
+            Ok(CommandResult {
+                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+                exit_code: output.status.code().unwrap_or(-1),
+                success: output.status.success(),
+            })
+        }
+        None => {
+            // Timeout expired, kill the process
+            let _ = child.kill();
+            let _ = child.wait(); // Reap the zombie process
+
+            Ok(CommandResult {
+                stdout: String::new(),
+                stderr: "Command timed out after 30 seconds. Long-running commands are not supported.".to_string(),
+                exit_code: -1,
+                success: false,
+            })
+        }
+    }
 }
 
 // ====== Команды для работы с закладками ======

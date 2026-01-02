@@ -176,14 +176,14 @@ watch(fullPath, () => {
 </script>
 
 <template>
-  <div class="bg-gradient-to-b from-[#F1EFE2] to-[#E3DED4] border-b border-[#919B9C]">
+  <div class="bg-gradient-to-b from-[var(--vf-bg-secondary)] to-[var(--vf-bg-tertiary)] border-b border-[var(--vf-border-default)]">
     <!-- Main Toolbar -->
     <div class="flex items-center h-[38px] px-1 gap-1">
       <!-- Navigation Buttons -->
       <button
         @click="emit('goBack')"
         :disabled="!canGoBack"
-        :class="['w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] flex items-center justify-center', !canGoBack && 'opacity-50 cursor-not-allowed']"
+        :class="['w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] flex items-center justify-center', !canGoBack && 'opacity-50 cursor-not-allowed']"
         title="Back"
       >
         ←
@@ -191,7 +191,7 @@ watch(fullPath, () => {
       <button
         @click="emit('goForward')"
         :disabled="!canGoForward"
-        :class="['w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] flex items-center justify-center', !canGoForward && 'opacity-50 cursor-not-allowed']"
+        :class="['w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] flex items-center justify-center', !canGoForward && 'opacity-50 cursor-not-allowed']"
         title="Forward"
       >
         →
@@ -199,26 +199,26 @@ watch(fullPath, () => {
       <button
         @click="emit('goUp')"
         :disabled="!canGoUp"
-        :class="['w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] flex items-center justify-center ml-1', !canGoUp && 'opacity-50 cursor-not-allowed']"
+        :class="['w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] flex items-center justify-center ml-1', !canGoUp && 'opacity-50 cursor-not-allowed']"
         title="Up"
       >
         ↑
       </button>
       <button
         @click="emit('goHome')"
-        class="w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] flex items-center justify-center"
+        class="w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] flex items-center justify-center"
         title="Home"
       >
         🏠
       </button>
 
-      <div class="w-px h-[24px] bg-[#919B9C]"></div>
+      <div class="w-px h-[24px] bg-[var(--vf-border-default)]"></div>
 
       <!-- Bookmark Button -->
       <button
         @click="emit('toggleBookmark')"
         :class="[
-          'w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] flex items-center justify-center transition-all',
+          'w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] flex items-center justify-center transition-all',
           isCurrentPathBookmarked && 'bg-[#FFE066] from-[#FFE066] to-[#FFD700]'
         ]"
         :title="isCurrentPathBookmarked ? 'Remove from Favorites (Ctrl+D)' : 'Add to Favorites (Ctrl+D)'"
@@ -229,7 +229,7 @@ watch(fullPath, () => {
       <!-- Dashboard Button -->
       <button
         @click="emit('toggleDashboard')"
-        class="w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] flex items-center justify-center transition-all"
+        class="w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] flex items-center justify-center transition-all"
         title="Folder Statistics Dashboard"
       >
         📊
@@ -239,10 +239,10 @@ watch(fullPath, () => {
       <button
         @click="emit('toggleProgrammerMode')"
         :class="[
-          'w-[30px] h-[28px] bg-gradient-to-b border border-[#8B8B8B] hover:border-[#0054E3] flex items-center justify-center transition-all',
+          'w-[30px] h-[28px] bg-gradient-to-b border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] flex items-center justify-center transition-all',
           isProgrammerMode
-            ? 'bg-[#C1D2EE] from-[#C1D2EE] to-[#A8C0E8] border-[#0A246A]'
-            : 'from-white to-[#E3DED4] active:bg-[#C1D2EE]'
+            ? 'bg-[var(--vf-surface-hover)] from-[var(--vf-surface-hover)] to-[var(--vf-surface-selected)] border-[var(--vf-accent-hover)]'
+            : 'from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] active:bg-[var(--vf-surface-hover)]'
         ]"
         :title="isProgrammerMode ? 'Programmer Mode: ON (Ctrl+Shift+P)' : 'Programmer Mode: OFF (Ctrl+Shift+P)'"
       >
@@ -257,17 +257,17 @@ watch(fullPath, () => {
         @update:model-value="(value) => emit('update:groupBy', value)"
       />
 
-      <div class="w-px h-[24px] bg-[#919B9C]"></div>
+      <div class="w-px h-[24px] bg-[var(--vf-border-default)]"></div>
 
-      <!-- Address Bar -->
-      <div class="flex-1 max-w-3xl flex items-center gap-2">
+      <!-- Address Bar (hidden in dual panel mode) -->
+      <div v-if="panelMode !== 'dual'" class="flex-1 max-w-3xl flex items-center gap-2">
         <!-- Address Label -->
         <span class="text-[11px] text-gray-600 font-bold">Address</span>
 
         <!-- Address Input/Breadcrumb -->
         <div class="flex-1 relative">
           <div
-            class="bg-white border-2 border-[#91A7D0] rounded h-[26px] flex items-center overflow-hidden shadow-inner"
+            class="bg-white border-2 border-[var(--vf-border-accent)] rounded h-[26px] flex items-center overflow-hidden shadow-inner"
           >
             <!-- Edit Mode: Text Input -->
             <input
@@ -286,7 +286,7 @@ watch(fullPath, () => {
           <div
             v-else
             @click="enterEditMode"
-            class="flex-1 flex items-center px-2 cursor-text hover:bg-[#F0F8FF] transition-colors"
+            class="flex-1 flex items-center px-2 cursor-text hover:bg-[var(--vf-surface-hover)] transition-colors"
           >
             <!-- Folder Icon -->
             <span class="text-sm mr-1.5">📁</span>
@@ -300,7 +300,7 @@ watch(fullPath, () => {
                 <template v-for="(segment, i) in currentPath" :key="i">
                   <button
                     @click.stop="emit('navigateToBreadcrumb', i)"
-                    class="hover:bg-[#C1D2EE] hover:border hover:border-[#0A246A] px-1.5 py-0.5 rounded whitespace-nowrap transition-colors font-medium"
+                    class="hover:bg-[var(--vf-surface-hover)] hover:border hover:border-[var(--vf-accent-hover)] px-1.5 py-0.5 rounded whitespace-nowrap transition-colors font-medium"
                   >
                     {{ segment }}
                   </button>
@@ -317,7 +317,7 @@ watch(fullPath, () => {
             <!-- Refresh Button -->
             <button
               @click.stop="emit('navigateToPath', fullPath)"
-              class="ml-1 p-1 hover:bg-[#C1D2EE] rounded text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
+              class="ml-1 p-1 hover:bg-[var(--vf-surface-hover)] rounded text-[10px] opacity-0 group-hover:opacity-100 transition-opacity"
               title="Refresh"
             >
               🔄
@@ -328,7 +328,7 @@ watch(fullPath, () => {
           <!-- Autocomplete Suggestions Dropdown -->
           <div
             v-if="isEditMode && showSuggestions && suggestions.length > 0"
-            class="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-[#91A7D0] rounded shadow-lg max-h-[300px] overflow-y-auto z-50"
+            class="absolute top-full left-0 right-0 mt-1 bg-white border-2 border-[var(--vf-border-accent)] rounded shadow-lg max-h-[300px] overflow-y-auto z-50"
           >
             <div
               v-for="(suggestion, index) in suggestions"
@@ -337,8 +337,8 @@ watch(fullPath, () => {
               :class="[
                 'px-3 py-2 text-[11px] cursor-pointer flex items-center gap-2',
                 index === selectedSuggestionIndex
-                  ? 'bg-[#0054E3] text-white'
-                  : 'hover:bg-[#F0F8FF]'
+                  ? 'bg-[var(--vf-accent-primary)] text-white'
+                  : 'hover:bg-[var(--vf-surface-hover)]'
               ]"
             >
               <span class="text-sm">📁</span>
@@ -350,7 +350,7 @@ watch(fullPath, () => {
         <!-- Go Button -->
         <button
           @click="emit('openCommandPalette')"
-          class="px-3 h-[26px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] active:bg-[#C1D2EE] rounded text-[11px] font-bold"
+          class="px-3 h-[26px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] rounded text-[11px] font-bold"
           title="Search (Ctrl+K)"
         >
           🔍
@@ -361,14 +361,14 @@ watch(fullPath, () => {
       <div class="flex gap-0.5">
         <button
           @click="emit('update:viewMode', 'list')"
-          :class="['w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] flex items-center justify-center', viewMode === 'list' ? 'bg-[#C1D2EE]' : '']"
+          :class="['w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] flex items-center justify-center', viewMode === 'list' ? 'bg-[var(--vf-surface-hover)]' : '']"
           title="List View"
         >
           ☰
         </button>
         <button
           @click="emit('update:viewMode', 'grid')"
-          :class="['w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] flex items-center justify-center', viewMode === 'grid' ? 'bg-[#C1D2EE]' : '']"
+          :class="['w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] flex items-center justify-center', viewMode === 'grid' ? 'bg-[var(--vf-surface-hover)]' : '']"
           title="Grid View"
         >
           ⊞
@@ -376,51 +376,20 @@ watch(fullPath, () => {
       </div>
 
       <!-- Separator -->
-      <div class="w-px h-[24px] bg-[#919B9C] ml-1"></div>
+      <div class="w-px h-[24px] bg-[var(--vf-border-default)] ml-1"></div>
 
       <!-- Dual Panel Toggle Button -->
       <button
         @click="emit('togglePanelMode')"
         :class="[
-          'w-[30px] h-[28px] bg-gradient-to-b from-white to-[#E3DED4]',
-          'border border-[#8B8B8B] hover:border-[#0054E3]',
+          'w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)]',
+          'border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)]',
           'flex items-center justify-center transition-all',
-          panelMode === 'dual' && 'bg-[#C1D2EE] from-[#C1D2EE] to-[#A8C0E8]'
+          panelMode === 'dual' && 'bg-[var(--vf-surface-hover)] from-[var(--vf-surface-hover)] to-[var(--vf-surface-selected)]'
         ]"
         :title="panelMode === 'dual' ? 'Single Panel' : 'Dual Panel'"
       >
         {{ panelMode === 'dual' ? '⊟' : '⊞⊞' }}
-      </button>
-    </div>
-
-    <!-- Tabs -->
-    <div class="flex items-center gap-1 px-2 pb-1 overflow-x-auto">
-      <div
-        v-for="tab in tabs"
-        :key="tab.id"
-        @click="emit('switchTab', tab.id)"
-        :class="['flex items-center gap-2 px-3 py-1 rounded-t border cursor-pointer', activeTabId === tab.id ? 'bg-white border-[#919B9C] border-b-white -mb-px' : 'bg-[#E3DED4] border-[#8B8B8B] hover:bg-[#ECE9D8]']"
-      >
-        <span class="text-[11px]">{{ tab.name }}</span>
-        <svg
-          v-if="tabs.length > 1"
-          @click.stop="emit('closeTab', tab.id)"
-          class="w-3 h-3 hover:bg-[#C1D2EE] rounded"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-        >
-          <line x1="18" y1="6" x2="6" y2="18"/>
-          <line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
-      </div>
-      <button
-        @click="emit('addTab')"
-        class="px-2 py-1 text-[11px] bg-gradient-to-b from-white to-[#E3DED4] border border-[#8B8B8B] hover:border-[#0054E3] rounded"
-        title="New Tab"
-      >
-        +
       </button>
     </div>
   </div>
