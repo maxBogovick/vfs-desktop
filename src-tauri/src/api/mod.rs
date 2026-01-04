@@ -1,4 +1,8 @@
 pub mod real_fs;
 pub mod virtual_fs;
+pub mod vault_error;
+pub mod security;
+pub mod recovery;
+pub mod notification_channels;
 
 pub use real_fs::RealFileSystem;

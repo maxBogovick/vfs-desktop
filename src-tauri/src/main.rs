@@ -9,6 +9,7 @@ fn main() {
 }
 
 fn run() {
+    //Scan::dir("../src-tauri/src/api_server")
     Scan::dir("../")
         .allow_only(vec!("**/*.rs", "**/*.ts", "**/*.vue"))
         .run().unwrap();

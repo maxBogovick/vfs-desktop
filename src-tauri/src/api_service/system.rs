@@ -36,27 +36,51 @@ impl SystemService {
 
     /// Get filesystem instance based on configuration
     fn get_filesystem(&self) -> FileSystemInstance {
-        let config = APP_CONFIG.read().unwrap();
+        self.get_filesystem_by_backend(None)
+    }
 
-        match config.filesystem_backend {
+    /// Get filesystem instance based on optional backend parameter
+    ///
+    /// # Arguments
+    /// * `backend` - Optional backend type ("real" or "virtual"). If None, uses global config.
+    fn get_filesystem_by_backend(&self, backend: Option<&str>) -> FileSystemInstance {
+        let backend_enum = match backend {
+            Some("real") => FileSystemBackend::Real,
+            Some("virtual") => FileSystemBackend::Virtual,
+            None => {
+                // Fallback на глобальную конфигурацию
+                let config = APP_CONFIG.read().unwrap();
+                config.filesystem_backend.clone()
+            }
+            Some(other) => {
+                tracing::warn!("Invalid filesystem backend '{}', using global config", other);
+                let config = APP_CONFIG.read().unwrap();
+                config.filesystem_backend.clone()
+            }
+        };
+
+        match backend_enum {
             FileSystemBackend::Real => {
                 tracing::debug!("Using RealFileSystem backend");
                 FileSystemInstance::Real(RealFileSystem::new())
             }
             FileSystemBackend::Virtual => {
                 tracing::debug!("Using VirtualFileSystem backend");
-                let virtual_fs = VirtualFileSystem::new("/Users/maxim/Projects/Rust/vfdir/out/fs.json")
-                    .unwrap_or_else(|_| VirtualFileSystem::new("/tmp/vfdir_fs.json").unwrap());
+                let virtual_fs = VirtualFileSystem::new_with_config()
+                    .unwrap_or_else(|e| {
+                        tracing::error!("Failed to initialize VirtualFileSystem: {}", e.message);
+                        panic!("Cannot initialize VirtualFileSystem: {}", e.message);
+                    });
                 FileSystemInstance::Virtual(virtual_fs)
             }
         }
     }
 
     /// Get user's home directory path
-    pub fn get_home_directory(&self) -> ApiResult<String> {
-        tracing::debug!("Getting home directory");
+    pub fn get_home_directory(&self, panel_fs: Option<&str>) -> ApiResult<String> {
+        tracing::debug!("Getting home directory with backend: {:?}", panel_fs);
 
-        self.get_filesystem().as_trait().get_home_directory().map_err(|err| {
+        self.get_filesystem_by_backend(panel_fs).as_trait().get_home_directory().map_err(|err| {
             tracing::error!("Failed to get home directory: {}", err.message);
             ApiError::OperationFailed {
                 message: err.message,
@@ -65,10 +89,10 @@ impl SystemService {
     }
 
     /// Get system folders (Desktop, Documents, Downloads, etc.)
-    pub fn get_system_folders(&self) -> ApiResult<Vec<FileSystemEntry>> {
-        tracing::debug!("Getting system folders");
+    pub fn get_system_folders(&self, panel_fs: Option<&str>) -> ApiResult<Vec<FileSystemEntry>> {
+        tracing::debug!("Getting system folders with backend: {:?}", panel_fs);
 
-        self.get_filesystem().as_trait().get_system_folders().map_err(|err| {
+        self.get_filesystem_by_backend(panel_fs).as_trait().get_system_folders().map_err(|err| {
             tracing::error!("Failed to get system folders: {}", err.message);
             ApiError::OperationFailed {
                 message: err.message,

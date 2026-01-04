@@ -1,5 +1,7 @@
 import { ref, computed } from 'vue';
-import type { FileItem } from '../types';
+import type { FileItem, FileSystemBackend } from '../types';
+import { useDualPanel } from './useDualPanel';
+import { useNotifications } from './useNotifications';
 
 // GLOBAL STATE - создаём один раз и переиспользуем
 const isDragging = ref(false);
@@ -76,9 +78,24 @@ export function useDragDrop() {
     item: FileItem | null,
     event: DragEvent,
     onMove: (sources: string[], destination: string) => Promise<void>,
-    onCopy: (sources: string[], destination: string) => Promise<void>
+    onCopy: (sources: string[], destination: string) => Promise<void>,
+    destinationFs?: FileSystemBackend
   ) => {
     event.preventDefault();
+
+    // Validate filesystem compatibility
+    const { isDualMode, activePanel, leftPanelFilesystem, rightPanelFilesystem } = useDualPanel();
+    
+    if (isDualMode.value && destinationFs) {
+      const sourceFs = activePanel.value === 'left' ? leftPanelFilesystem.value : rightPanelFilesystem.value;
+      
+      if (sourceFs !== destinationFs) {
+        const { error } = useNotifications();
+        error('Invalid operation', 'Cannot move/copy files between different filesystem types');
+        endDrag();
+        return;
+      }
+    }
 
     if (!item || item.type !== 'folder') {
       endDrag();

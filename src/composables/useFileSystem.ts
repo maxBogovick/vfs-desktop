@@ -70,12 +70,12 @@ export function useFileSystem() {
   };
 
   // Load directory contents from Tauri backend
-  const loadDirectory = async (path: string): Promise<void> => {
+  const loadDirectory = async (path: string, panelFs?: string): Promise<void> => {
     isLoading.value = true;
     error.value = null;
 
     try {
-      const entries: FileSystemEntry[] = await invoke('read_directory', { path });
+      const entries: FileSystemEntry[] = await invoke('read_directory', { path, panelFs: panelFs || null });
       files.value = entriesToFileItems(entries);
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load directory';
@@ -87,9 +87,9 @@ export function useFileSystem() {
   };
 
   // Get directory contents (for tree view) - returns array instead of updating state
-  const getDirectoryContents = async (path: string): Promise<FileItem[]> => {
+  const getDirectoryContents = async (path: string, panelFs?: string): Promise<FileItem[]> => {
     try {
-      const entries: FileSystemEntry[] = await invoke('read_directory', { path });
+      const entries: FileSystemEntry[] = await invoke('read_directory', { path, panelFs: panelFs || null });
       return entriesToFileItems(entries);
     } catch (e) {
       console.error('Error getting directory contents:', e);
@@ -98,9 +98,9 @@ export function useFileSystem() {
   };
 
   // Get home directory
-  const getHomeDirectory = async (): Promise<string> => {
+  const getHomeDirectory = async (panelFs?: string): Promise<string> => {
     try {
-      return await invoke('get_home_directory');
+      return await invoke('get_home_directory', { panelFs: panelFs || null });
     } catch (e) {
       console.error('Error getting home directory:', e);
       return '/';
@@ -108,9 +108,9 @@ export function useFileSystem() {
   };
 
   // Get file info
-  const getFileInfo = async (path: string): Promise<FileItem | null> => {
+  const getFileInfo = async (path: string, panelFs?: string): Promise<FileItem | null> => {
     try {
-      const entry: FileSystemEntry = await invoke('get_file_info', { path });
+      const entry: FileSystemEntry = await invoke('get_file_info', { path, panelFs: panelFs || null });
       return {
         id: entry.path,
         name: entry.name,
@@ -135,45 +135,45 @@ export function useFileSystem() {
   };
 
   // Delete file or folder
-  const deleteItem = async (path: string): Promise<void> => {
+  const deleteItem = async (path: string, panelFs?: string): Promise<void> => {
     try {
-      await invoke('delete_item', { path });
+      await invoke('delete_item', { path, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to delete item');
     }
   };
 
   // Rename file or folder
-  const renameItem = async (oldPath: string, newName: string): Promise<void> => {
+  const renameItem = async (oldPath: string, newName: string, panelFs?: string): Promise<void> => {
     try {
-      await invoke('rename_item', { oldPath, newName });
+      await invoke('rename_item', { oldPath, newName, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to rename item');
     }
   };
 
   // Create new folder
-  const createFolder = async (path: string, name: string): Promise<void> => {
+  const createFolder = async (path: string, name: string, panelFs?: string): Promise<void> => {
     try {
-      await invoke('create_folder', { path, name });
+      await invoke('create_folder', { path, name, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to create folder');
     }
   };
 
   // Create new file
-  const createFile = async (path: string, name: string, content?: string): Promise<void> => {
+  const createFile = async (path: string, name: string, content?: string, panelFs?: string): Promise<void> => {
     try {
-      await invoke('create_file', { path, name, content: content || null });
+      await invoke('create_file', { path, name, content: content || null, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to create file');
     }
   };
 
   // Batch create files
-  const createFilesBatch = async (path: string, files: Array<{ name: string; content?: string }>): Promise<any> => {
+  const createFilesBatch = async (path: string, files: Array<{ name: string; content?: string }>, panelFs?: string): Promise<any> => {
     try {
-      const result = await invoke('create_files_batch', { path, files });
+      const result = await invoke('create_files_batch', { path, files, panelFs: panelFs || null });
       return result;
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to create files');
@@ -181,9 +181,9 @@ export function useFileSystem() {
   };
 
   // Copy items
-  const copyItems = async (sources: string[], destination: string): Promise<void> => {
+  const copyItems = async (sources: string[], destination: string, panelFs?: string): Promise<void> => {
     try {
-      await invoke('copy_items', { sources, destination });
+      await invoke('copy_items', { sources, destination, panelFs: panelFs || null });
     } catch (e) {
       console.error(e);
       throw new Error(e instanceof Error ? e.message : 'Failed to copy items');
@@ -191,36 +191,36 @@ export function useFileSystem() {
   };
 
   // Move items
-  const moveItems = async (sources: string[], destination: string): Promise<void> => {
+  const moveItems = async (sources: string[], destination: string, panelFs?: string): Promise<void> => {
     try {
-      await invoke('move_items', { sources, destination });
+      await invoke('move_items', { sources, destination, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to move items');
     }
   };
 
   // Open file in default application
-  const openFile = async (path: string): Promise<void> => {
+  const openFile = async (path: string, panelFs?: string): Promise<void> => {
     try {
-      await invoke('open_file', { path });
+      await invoke('open_file', { path, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to open file');
     }
   };
 
   // Reveal file in Finder/Explorer
-  const revealInFinder = async (path: string): Promise<void> => {
+  const revealInFinder = async (path: string, panelFs?: string): Promise<void> => {
     try {
-      await invoke('reveal_in_finder', { path });
+      await invoke('reveal_in_finder', { path, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to reveal in Finder');
     }
   };
 
   // Get system folders
-  const getSystemFolders = async (): Promise<FileItem[]> => {
+  const getSystemFolders = async (panelFs?: string): Promise<FileItem[]> => {
     try {
-      const entries: FileSystemEntry[] = await invoke('get_system_folders');
+      const entries: FileSystemEntry[] = await invoke('get_system_folders', { panelFs: panelFs || null });
       return entries.map((entry) => ({
         id: entry.path,
         name: entry.name,
@@ -244,27 +244,27 @@ export function useFileSystem() {
   };
 
   // Read file content (returns base64 for images, text for text files)
-  const readFileContent = async (path: string, maxSize?: number): Promise<string> => {
+  const readFileContent = async (path: string, maxSize?: number, panelFs?: string): Promise<string> => {
     try {
-      return await invoke('read_file_content', { path, maxSize });
+      return await invoke('read_file_content', { path, maxSize, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to read file content');
     }
   };
 
   // Write file content
-  const writeFileContent = async (path: string, content: string): Promise<void> => {
+  const writeFileContent = async (path: string, content: string, panelFs?: string): Promise<void> => {
     try {
-      await invoke('write_file_content', { path, content });
+      await invoke('write_file_content', { path, content, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to write file content');
     }
   };
 
   // Normalize path (expand ~, resolve to absolute path)
-  const normalizePath = async (path: string): Promise<string> => {
+  const normalizePath = async (path: string, panelFs?: string): Promise<string> => {
     try {
-      return await invoke('normalize_path', { path });
+      return await invoke('normalize_path', { path, panelFs: panelFs || null });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to normalize path');
     }

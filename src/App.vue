@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import Toolbar from './components/Toolbar.vue';
 import Sidebar from './components/Sidebar.vue';
 import FileList from './components/FileList.vue';
@@ -22,8 +23,10 @@ import Terminal from './components/Terminal.vue';
 import ProgrammerToolbar from './components/ProgrammerToolbar.vue';
 import PanelToolbar from './components/PanelToolbar.vue';
 import TextEditor from './components/TextEditor.vue';
+import VaultOverlay from './components/VaultOverlay.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
+import { useVault } from './composables/useVault';
 import { useNavigation } from './composables/useNavigation';
 import { useSelection } from './composables/useSelection';
 import { useSearch } from './composables/useSearch';
@@ -52,6 +55,9 @@ import type { FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange } from
 
 // File System
 const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory, writeFileContent } = useFileSystem();
+
+// Vault Security
+const vault = useVault();
 
 // Navigation
 const {
@@ -1220,6 +1226,9 @@ const updateSystemStats = async () => {
 onMounted(async () => {
   document.addEventListener('click', closeContextMenu);
 
+  // Check vault status FIRST
+  await vault.checkStatus();
+
   // Load and apply theme FIRST (before any other initialization)
   const { loadTheme } = useTheme();
   await loadTheme();
@@ -1254,7 +1263,12 @@ onMounted(async () => {
 
   // Восстановить табы если есть (только если НЕ dual mode)
   if (!isDualMode.value) {
-    if (uiState && uiState.tabs && uiState.tabs.length > 0) {
+    // Check current filesystem backend configuration
+    const config = await invoke<any>('get_config');
+    const isVirtualFS = config.filesystem_backend === 'Virtual';
+
+    if (uiState && uiState.tabs && uiState.tabs.length > 0 && !isVirtualFS) {
+      // Only restore tabs for Real FS (tabs contain real paths)
       console.log('[App] ✅ Restoring', uiState.tabs.length, 'tabs');
 
       tabs.value = uiState.tabs.map(tabState => ({
@@ -1270,11 +1284,25 @@ onMounted(async () => {
         console.log('[App] ✅ Restoring active tab:', uiState.active_tab_id);
         activeTabId.value = uiState.active_tab_id;
       }
-    } else if (uiState && uiState.last_path && uiState.last_path.length > 0) {
+    } else if (uiState && uiState.last_path && uiState.last_path.length > 0 && !isVirtualFS) {
+      // Only restore last path for Real FS
       console.log('[App] ✅ Restoring last path:', uiState.last_path);
       navigateTo(uiState.last_path);
     } else {
-      console.log('[App] ℹ️ No tabs or path to restore');
+      // For Virtual FS or no saved state, navigate to home directory
+      console.log('[App] ℹ️ No tabs/path to restore or Virtual FS - navigating to home');
+      const home = await getHomeDirectory();
+      console.log('[App] 🏠 Home directory:', home);
+      await loadDirectory(home);
+    }
+  } else {
+    // Dual mode: check if we need to initialize home for virtual FS
+    const config = await invoke<any>('get_config');
+    const isVirtualFS = config.filesystem_backend === 'Virtual';
+    if (isVirtualFS && (!uiState || !uiState.dual_panel_config)) {
+      console.log('[App] ℹ️ Virtual FS in dual mode - initializing with home');
+      const home = await getHomeDirectory();
+      await loadDirectory(home);
     }
   }
 
@@ -1586,6 +1614,9 @@ onMounted(async () => {
         <span class="ml-3">CPU: {{ systemStats.cpu_percent.toFixed(1) }}%</span>
       </span>
     </div>
+
+    <!-- Vault Security Overlay -->
+    <VaultOverlay />
   </div>
 </template>
 

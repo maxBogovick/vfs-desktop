@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import type { Tab } from '../types';
+import type { Tab, FileSystemBackend } from '../types';
 
 interface Props {
   tabs: Tab[];
@@ -10,6 +10,8 @@ interface Props {
   sortOrder?: 'asc' | 'desc';
   showHidden?: boolean;
   editModeEnabled?: boolean;
+  isProgrammerMode?: boolean;
+  panelFilesystem?: FileSystemBackend;
 }
 
 interface Emits {
@@ -23,6 +25,7 @@ interface Emits {
   (e: 'toggleHidden'): void;
   (e: 'toggleEditMode'): void;
   (e: 'navigateToBreadcrumb', index: number): void;
+  (e: 'switchFilesystem', backend: FileSystemBackend): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -30,6 +33,8 @@ const props = withDefaults(defineProps<Props>(), {
   sortOrder: 'asc',
   showHidden: false,
   editModeEnabled: false,
+  isProgrammerMode: false,
+  panelFilesystem: 'real',
   currentPath: () => [],
 });
 
@@ -100,6 +105,26 @@ const fullPath = computed(() => {
       >
         +
       </button>
+
+      <!-- FS Switcher (only in programmer mode) -->
+      <div
+        v-if="isProgrammerMode"
+        class="ml-auto flex items-center gap-1 px-2"
+      >
+        <span class="text-[10px] text-gray-500">FS:</span>
+        <button
+          @click="emit('switchFilesystem', panelFilesystem === 'real' ? 'virtual' : 'real')"
+          :class="[
+            'px-2 py-0.5 rounded text-[10px] font-mono border transition-colors',
+            panelFilesystem === 'virtual'
+              ? 'bg-purple-500 text-white border-purple-600'
+              : 'bg-gray-100 text-gray-700 border-gray-300 hover:bg-gray-200'
+          ]"
+          :title="panelFilesystem === 'virtual' ? 'Switch to Real FS' : 'Switch to Virtual FS'"
+        >
+          {{ panelFilesystem === 'virtual' ? 'Virtual' : 'Real' }}
+        </button>
+      </div>
     </div>
 
     <!-- Action Buttons Row -->

@@ -31,7 +31,7 @@ pub async fn list_directory(
     State(_state): State<Arc<AppState>>,
     Query(query): Query<ListDirectoryQuery>,
 ) -> impl IntoResponse {
-    match API.files.list_directory(&query.path) {
+    match API.files.list_directory(&query.path, query.panel_fs.as_deref()) {
         Ok(files) => Json(ListDirectoryResponse { files }).into_response(),
         Err(err) => {
             let status = match err {
@@ -58,7 +58,7 @@ pub async fn get_file_info(
     State(_state): State<Arc<AppState>>,
     Query(query): Query<GetFileInfoQuery>,
 ) -> impl IntoResponse {
-    match API.files.get_file_info(&query.path) {
+    match API.files.get_file_info(&query.path, query.panel_fs.as_deref()) {
         Ok(info) => Json(info).into_response(),
         Err(err) => {
             let status = match err {
@@ -85,7 +85,7 @@ pub async fn create_folder(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<CreateFolderRequest>,
 ) -> impl IntoResponse {
-    match API.files.create_folder(&req.path, &req.name) {
+    match API.files.create_folder(&req.path, &req.name, req.panel_fs.as_deref()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(err) => {
             let status = match err {
@@ -109,11 +109,12 @@ pub async fn create_folder(
     ),
     tag = "files"
 )]
+/// `TODO change signature instead of panel_fs need using source_file_system, destination_file_system
 pub async fn copy_items(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<CopyItemsRequest>,
 ) -> impl IntoResponse {
-    match API.files.copy_items(&req.sources, &req.destination) {
+    match API.files.copy_items(&req.sources, &req.destination, req.source_file_system.as_deref()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(err) => {
             let status = match err {
@@ -137,11 +138,12 @@ pub async fn copy_items(
     ),
     tag = "files"
 )]
+/// `TODO change signature instead of panel_fs need using source_file_system, destination_file_system
 pub async fn move_items(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<MoveItemsRequest>,
 ) -> impl IntoResponse {
-    match API.files.move_items(&req.sources, &req.destination) {
+    match API.files.move_items(&req.sources, &req.destination, req.source_file_system.as_deref()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(err) => {
             let status = match err {
@@ -169,7 +171,7 @@ pub async fn rename_item(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<RenameItemRequest>,
 ) -> impl IntoResponse {
-    match API.files.rename_item(&req.old_path, &req.new_name) {
+    match API.files.rename_item(&req.old_path, &req.new_name, req.panel_fs.as_deref()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(err) => {
             let status = match err {
@@ -197,7 +199,7 @@ pub async fn delete_items(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<DeleteItemsRequest>,
 ) -> impl IntoResponse {
-    match API.files.delete_items(&req.paths) {
+    match API.files.delete_items(&req.paths, req.panel_fs.as_deref()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(err) => {
             let status = match err {
@@ -215,7 +217,7 @@ pub async fn read_file_content(
     State(_state): State<Arc<AppState>>,
     Query(query): Query<ReadFileContentQuery>,
 ) -> impl IntoResponse {
-    match API.files.read_file_content(&query.path, query.max_size) {
+    match API.files.read_file_content(&query.path, query.max_size, query.panel_fs.as_deref()) {
         Ok(content) => Json(ReadFileContentResponse { content }).into_response(),
         Err(err) => {
             let status = match err {
@@ -232,7 +234,7 @@ pub async fn write_file_content(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<WriteFileContentRequest>,
 ) -> impl IntoResponse {
-    match API.files.write_file_content(&req.path, &req.content) {
+    match API.files.write_file_content(&req.path, &req.content, req.panel_fs.as_deref()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(err) => {
             let status = match err {
@@ -250,7 +252,7 @@ pub async fn open_file(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<OpenFileRequest>,
 ) -> impl IntoResponse {
-    match API.files.open_file(&req.path) {
+    match API.files.open_file(&req.path, req.panel_fs.as_deref()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(err) => {
             let status = match err {
@@ -267,7 +269,7 @@ pub async fn reveal_in_finder(
     State(_state): State<Arc<AppState>>,
     Json(req): Json<OpenFileRequest>,
 ) -> impl IntoResponse {
-    match API.files.reveal_in_finder(&req.path) {
+    match API.files.reveal_in_finder(&req.path, req.panel_fs.as_deref()) {
         Ok(_) => StatusCode::OK.into_response(),
         Err(err) => {
             let status = match err {

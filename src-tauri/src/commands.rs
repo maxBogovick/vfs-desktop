@@ -27,28 +27,28 @@ pub fn set_filesystem_backend(backend: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn read_directory(path: String) -> Result<Vec<FileSystemEntry>, String> {
-    API.files.list_directory(&path).map_err(|e| e.to_string())
+pub fn read_directory(path: String, panel_fs: Option<String>) -> Result<Vec<FileSystemEntry>, String> {
+    API.files.list_directory(&path, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn delete_item(path: String) -> Result<(), String> {
-    API.files.delete_item(&path).map_err(|e| e.to_string())
+pub fn delete_item(path: String, panel_fs: Option<String>) -> Result<(), String> {
+    API.files.delete_item(&path, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn rename_item(old_path: String, new_name: String) -> Result<(), String> {
-    API.files.rename_item(&old_path, &new_name).map_err(|e| e.to_string())
+pub fn rename_item(old_path: String, new_name: String, panel_fs: Option<String>) -> Result<(), String> {
+    API.files.rename_item(&old_path, &new_name, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn create_folder(path: String, name: String) -> Result<(), String> {
-    API.files.create_folder(&path, &name).map_err(|e| e.to_string())
+pub fn create_folder(path: String, name: String, panel_fs: Option<String>) -> Result<(), String> {
+    API.files.create_folder(&path, &name, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn create_file(path: String, name: String, content: Option<String>) -> Result<(), String> {
-    API.files.create_file(&path, &name, content.as_deref()).map_err(|e| e.to_string())
+pub fn create_file(path: String, name: String, content: Option<String>, panel_fs: Option<String>) -> Result<(), String> {
+    API.files.create_file(&path, &name, content.as_deref(), panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[derive(serde::Deserialize, serde::Serialize)]
@@ -59,13 +59,13 @@ pub struct FileSpec {
 }
 
 #[tauri::command]
-pub fn create_files_batch(path: String, files: Vec<FileSpec>) -> Result<crate::api_service::files::BatchCreateResult, String> {
+pub fn create_files_batch(path: String, files: Vec<FileSpec>, panel_fs: Option<String>) -> Result<crate::api_service::files::BatchCreateResult, String> {
     let file_specs: Vec<(String, Option<String>)> = files
         .into_iter()
         .map(|f| (f.name, f.content))
         .collect();
 
-    API.files.create_files_batch(&path, &file_specs).map_err(|e| e.to_string())
+    API.files.create_files_batch(&path, &file_specs, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -75,9 +75,9 @@ pub fn get_file_templates() -> Result<Vec<crate::templates::FileTemplate>, Strin
 }
 
 #[tauri::command]
-pub fn suggest_file_extension(path: String) -> Result<Option<String>, String> {
+pub fn suggest_file_extension(path: String, panel_fs: Option<String>) -> Result<Option<String>, String> {
     // Получаем список файлов в директории
-    let entries = API.files.list_directory(&path).map_err(|e| e.to_string())?;
+    let entries = API.files.list_directory(&path, panel_fs.as_deref()).map_err(|e| e.to_string())?;
 
     let file_names: Vec<String> = entries
         .into_iter()
@@ -99,58 +99,58 @@ pub fn get_template_content(template_id: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn copy_items(sources: Vec<String>, destination: String) -> Result<(), String> {
-    API.files.copy_items(&sources, &destination).map_err(|e| e.to_string())
+pub fn copy_items(sources: Vec<String>, destination: String, panel_fs: Option<String>) -> Result<(), String> {
+    API.files.copy_items(&sources, &destination, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn move_items(sources: Vec<String>, destination: String) -> Result<(), String> {
-    API.files.move_items(&sources, &destination).map_err(|e| e.to_string())
+pub fn move_items(sources: Vec<String>, destination: String, panel_fs: Option<String>) -> Result<(), String> {
+    API.files.move_items(&sources, &destination, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_home_directory() -> Result<String, String> {
-    API.system.get_home_directory().map_err(|e| e.to_string())
+pub fn get_home_directory(panel_fs: Option<String>) -> Result<String, String> {
+    API.system.get_home_directory(panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_file_info(path: String) -> Result<FileSystemEntry, String> {
-    API.files.get_file_info(&path).map_err(|e| e.to_string())
+pub fn get_file_info(path: String, panel_fs: Option<String>) -> Result<FileSystemEntry, String> {
+    API.files.get_file_info(&path, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn open_file(path: String) -> Result<(), String> {
-    API.files.open_file(&path).map_err(|e| e.to_string())
+pub fn open_file(path: String, panel_fs: Option<String>) -> Result<(), String> {
+    API.files.open_file(&path, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn reveal_in_finder(path: String) -> Result<(), String> {
-    API.files.reveal_in_finder(&path).map_err(|e| e.to_string())
+pub fn reveal_in_finder(path: String, panel_fs: Option<String>) -> Result<(), String> {
+    API.files.reveal_in_finder(&path, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_system_folders() -> Result<Vec<FileSystemEntry>, String> {
-    API.system.get_system_folders().map_err(|e| e.to_string())
+pub fn get_system_folders(panel_fs: Option<String>) -> Result<Vec<FileSystemEntry>, String> {
+    API.system.get_system_folders(panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn read_file_content(path: String, max_size: Option<u64>) -> Result<String, String> {
-    API.files.read_file_content(&path, max_size).map_err(|e| e.to_string())
+pub fn read_file_content(path: String, max_size: Option<u64>, panel_fs: Option<String>) -> Result<String, String> {
+    API.files.read_file_content(&path, max_size, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn write_file_content(path: String, content: String) -> Result<(), String> {
-    API.files.write_file_content(&path, &content).map_err(|e| e.to_string())
+pub fn write_file_content(path: String, content: String, panel_fs: Option<String>) -> Result<(), String> {
+    API.files.write_file_content(&path, &content, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn normalize_path(path: String) -> Result<String, String> {
-    API.files.normalize_path(&path).map_err(|e| e.to_string())
+pub fn normalize_path(path: String, panel_fs: Option<String>) -> Result<String, String> {
+    API.files.normalize_path(&path, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_path_suggestions(partial_path: String) -> Result<Vec<String>, String> {
-    API.files.get_path_suggestions(&partial_path).map_err(|e| e.to_string())
+pub fn get_path_suggestions(partial_path: String, panel_fs: Option<String>) -> Result<Vec<String>, String> {
+    API.files.get_path_suggestions(&partial_path, panel_fs.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -534,9 +534,10 @@ pub fn copy_file_with_custom_name(
     source_path: String,
     destination_dir: String,
     new_name: String,
+    panel_fs: Option<String>,
 ) -> Result<(), String> {
     API.files
-        .copy_with_custom_name(&source_path, &destination_dir, &new_name)
+        .copy_with_custom_name(&source_path, &destination_dir, &new_name, panel_fs.as_deref())
         .map_err(|e| e.to_string())
 }
 
@@ -712,4 +713,257 @@ pub fn validate_batch_rename(new_names: Vec<String>) -> Result<Vec<String>, Stri
     } else {
         Ok(errors)
     }
+}
+
+// ====== Vault Security Commands ======
+
+#[tauri::command]
+pub fn vault_is_enabled() -> Result<bool, String> {
+    API.vault.is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_get_status() -> Result<String, String> {
+    API.vault.get_status().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_initialize(password: String) -> Result<(), String> {
+    API.vault.initialize(password).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_unlock(password: String) -> Result<(), String> {
+    API.vault.unlock(password).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_lock() -> Result<(), String> {
+    API.vault.lock().map_err(|e| e.to_string())
+}
+
+// ====== Vault Recovery Commands ======
+
+#[tauri::command]
+pub fn vault_setup_recovery(channels: Vec<serde_json::Value>) -> Result<String, String> {
+    use crate::api::notification_channels::ChannelConfig;
+
+    let channel_configs: Vec<ChannelConfig> = channels
+        .into_iter()
+        .filter_map(|v| serde_json::from_value(v).ok())
+        .collect();
+
+    API.vault.setup_recovery(channel_configs).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_request_password_reset(channel_type: String) -> Result<(), String> {
+    API.vault.request_password_reset(channel_type).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_verify_reset_code(code: String, new_password: String) -> Result<(), String> {
+    API.vault.verify_reset_code(code, new_password).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_get_recovery_channels() -> Result<Vec<String>, String> {
+    API.vault.get_recovery_channels().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_is_recovery_configured() -> Result<bool, String> {
+    API.vault.is_recovery_configured().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_reset() -> Result<(), String> {
+    API.vault.reset().map_err(|e| e.to_string())
+}
+
+// ====== Vault Directory Management Commands ======
+
+#[tauri::command]
+pub fn vault_get_current_directory() -> Result<String, String> {
+    let config = crate::state::APP_CONFIG.read().unwrap();
+    config.get_vault_dir()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub fn vault_get_default_directory() -> Result<String, String> {
+    crate::config::AppConfig::default_vault_dir()
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+pub async fn vault_select_directory() -> Result<Option<String>, String> {
+    let folder = rfd::AsyncFileDialog::new()
+        .set_title("Select Vault Directory")
+        .pick_folder()
+        .await;
+
+    Ok(folder.map(|f| f.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub fn vault_set_custom_directory(path: String, migrate_data: bool) -> Result<(), String> {
+    use std::path::Path;
+
+    let new_path = Path::new(&path);
+
+    // Validate path
+    if !new_path.exists() {
+        return Err("Selected directory does not exist".to_string());
+    }
+
+    if !new_path.is_dir() {
+        return Err("Selected path is not a directory".to_string());
+    }
+
+    // Get current paths before changing config
+    let old_paths = {
+        let config = crate::state::APP_CONFIG.read().unwrap();
+        config.get_vault_paths().map_err(|e| e.to_string())?
+    };
+
+    // Update config
+    {
+        let mut config = crate::state::APP_CONFIG.write().unwrap();
+        config.vault.custom_path = Some(path.clone());
+        config.vault.use_custom_path = true;
+        config.save().map_err(|e| e.to_string())?;
+    }
+
+    // Get new paths after config change
+    let new_paths = {
+        let config = crate::state::APP_CONFIG.read().unwrap();
+        config.get_vault_paths().map_err(|e| e.to_string())?
+    };
+
+    // Perform migration if requested
+    if migrate_data {
+        migrate_vault_files(&old_paths, &new_paths)?;
+    }
+
+    // Clear VFS from memory to force reinitialization
+    {
+        use crate::api_service::vault::VAULT_FS;
+        let mut vfs_guard = VAULT_FS.lock().unwrap();
+        *vfs_guard = None;
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn vault_reset_to_default_directory(migrate_data: bool) -> Result<(), String> {
+    // Get current paths
+    let old_paths = {
+        let config = crate::state::APP_CONFIG.read().unwrap();
+        config.get_vault_paths().map_err(|e| e.to_string())?
+    };
+
+    // Update config to use default
+    {
+        let mut config = crate::state::APP_CONFIG.write().unwrap();
+        config.vault.use_custom_path = false;
+        config.vault.custom_path = None;
+        config.save().map_err(|e| e.to_string())?;
+    }
+
+    // Get new default paths
+    let new_paths = {
+        let config = crate::state::APP_CONFIG.read().unwrap();
+        config.get_vault_paths().map_err(|e| e.to_string())?
+    };
+
+    // Perform migration if requested
+    if migrate_data {
+        migrate_vault_files(&old_paths, &new_paths)?;
+    }
+
+    // Clear VFS from memory
+    {
+        use crate::api_service::vault::VAULT_FS;
+        let mut vfs_guard = VAULT_FS.lock().unwrap();
+        *vfs_guard = None;
+    }
+
+    Ok(())
+}
+
+/// Helper function to migrate vault files
+fn migrate_vault_files(old_paths: &crate::config::VaultPaths, new_paths: &crate::config::VaultPaths) -> Result<(), String> {
+    use std::fs;
+
+    // Skip migration if source and destination are the same
+    if old_paths.dir == new_paths.dir {
+        tracing::info!("Source and destination are the same, skipping migration");
+        return Ok(());
+    }
+
+    // Check if source files exist
+    if !old_paths.fs_json.exists() && !old_paths.vault_meta.exists() && !old_paths.vault_bin.exists() {
+        tracing::info!("No vault files to migrate");
+        return Ok(());
+    }
+
+    let files_to_migrate = vec![
+        (&old_paths.fs_json, &new_paths.fs_json, "fs.json"),
+        (&old_paths.vault_meta, &new_paths.vault_meta, "vault.meta"),
+        (&old_paths.vault_bin, &new_paths.vault_bin, "vault.bin"),
+    ];
+
+    // Create destination directory
+    if !new_paths.dir.exists() {
+        fs::create_dir_all(&new_paths.dir)
+            .map_err(|e| format!("Failed to create destination directory: {}", e))?;
+    }
+
+    // Check for conflicts
+    for (_, dst, name) in &files_to_migrate {
+        if dst.exists() {
+            return Err(format!(
+                "Destination file already exists: {}. Please manually resolve the conflict.",
+                name
+            ));
+        }
+    }
+
+    // Copy files with verification
+    for (src, dst, name) in &files_to_migrate {
+        if src.exists() {
+            // Copy file
+            fs::copy(src, dst)
+                .map_err(|e| format!("Failed to copy {}: {}", name, e))?;
+
+            // Verify file size matches
+            let src_size = src.metadata()
+                .map_err(|e| format!("Failed to read source metadata for {}: {}", name, e))?
+                .len();
+            let dst_size = dst.metadata()
+                .map_err(|e| format!("Failed to read destination metadata for {}: {}", name, e))?
+                .len();
+
+            if src_size != dst_size {
+                // Rollback on verification failure
+                let _ = fs::remove_file(dst);
+                return Err(format!("File size mismatch after copying {}", name));
+            }
+
+            tracing::info!("Migrated {} -> {}", src.display(), dst.display());
+        }
+    }
+
+    // Delete old files only after ALL files are successfully copied and verified
+    for (src, _, name) in &files_to_migrate {
+        if src.exists() {
+            fs::remove_file(src)
+                .map_err(|e| format!("Failed to remove old file {}: {}", name, e))?;
+        }
+    }
+
+    tracing::info!("Vault migration completed from {:?} to {:?}", old_paths.dir, new_paths.dir);
+    Ok(())
 }

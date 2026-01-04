@@ -3,8 +3,17 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::cell::RefCell;
+use ::base64::Engine;
 // Импортируем типы из вашего модуля
 use crate::core::{FileSystem, FileSystemEntry, FileSystemError, FileSystemResult};
+use crate::config::VaultPaths;
+use crate::state::APP_CONFIG;
+
+// Thread-local storage for active recovery session
+thread_local! {
+    static RECOVERY_SESSION: RefCell<Option<crate::api::recovery::RecoverySession>> = RefCell::new(None);
+}
 
 /// Узел виртуальной файловой системы
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,7 +83,7 @@ impl VfsNode {
 
 /// Состояние виртуальной файловой системы
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct VfsState {
+pub struct VfsState {
     root: VfsNode,
     home_directory: String,
 }
@@ -89,10 +98,10 @@ impl Default for VfsState {
 
             if let VfsNode::Directory { children: home_children, .. } = &mut home {
                 // Создаем стандартные папки
-                home_children.insert("Documents".to_string(), VfsNode::new_directory());
+                /*home_children.insert("Documents".to_string(), VfsNode::new_directory());
                 home_children.insert("Downloads".to_string(), VfsNode::new_directory());
                 home_children.insert("Pictures".to_string(), VfsNode::new_directory());
-                home_children.insert("Desktop".to_string(), VfsNode::new_directory());
+                home_children.insert("Desktop".to_string(), VfsNode::new_directory());*/
             }
 
             children.insert("home".to_string(), home);
@@ -106,19 +115,92 @@ impl Default for VfsState {
 }
 
 /// Виртуальная файловая система в памяти с персистентностью
+#[derive(Clone)]
 pub struct VirtualFileSystem {
+    // Old field kept for backward compatibility during transition
     state: Arc<RwLock<VfsState>>,
     persistence_path: PathBuf,
+
+    // New vault-based security fields
+    vault_status: Arc<RwLock<crate::api::security::VfsStatus>>,
+    config_path: PathBuf,  // vault.meta
+    data_path: PathBuf,    // vault.bin
+    vault_enabled: bool,   // Feature flag for gradual migration
 }
 
 impl VirtualFileSystem {
+    /// Create new VirtualFileSystem with configurable paths from AppConfig
+    pub fn new_with_config() -> FileSystemResult<Self> {
+        let config = APP_CONFIG.read().unwrap();
+        let vault_paths = config.get_vault_paths()
+            .map_err(|e| FileSystemError::new(format!("Failed to get vault paths: {}", e)))?;
+
+        Self::new_with_paths(vault_paths)
+    }
+
+    /// Internal constructor with explicit paths
+    fn new_with_paths(paths: VaultPaths) -> FileSystemResult<Self> {
+        let persistence_path = paths.fs_json;
+        let config_path = paths.vault_meta;
+        let data_path = paths.vault_bin;
+
+        // Determine initial vault status
+        let vault_status = if config_path.exists() && data_path.exists() {
+            crate::api::security::VfsStatus::Locked
+        } else {
+            crate::api::security::VfsStatus::NotInitialized
+        };
+
+        // Old state loading for backward compatibility
+        let state = if persistence_path.exists() {
+            Self::load_state(&persistence_path).unwrap_or_else(|e| {
+                eprintln!("Предупреждение: не удалось загрузить состояние ({}), создается новое", e.message);
+                VfsState::default()
+            })
+        } else {
+            VfsState::default()
+        };
+
+        let vfs = Self {
+            state: Arc::new(RwLock::new(state)),
+            persistence_path,
+            vault_status: Arc::new(RwLock::new(vault_status)),
+            config_path,
+            data_path,
+            vault_enabled: true,
+        };
+
+        vfs.save_state()?;
+        Ok(vfs)
+    }
+
     /// Создать новую виртуальную файловую систему
     ///
     /// # Аргументы
     /// * `persistence_path` - путь к файлу для сохранения состояния
+    ///
+    /// # Deprecated
+    /// Use `new_with_config()` instead for configurable vault paths
+    #[deprecated(note = "Use new_with_config() instead")]
     pub fn new(persistence_path: impl AsRef<Path>) -> FileSystemResult<Self> {
         let persistence_path = persistence_path.as_ref().to_path_buf();
 
+        // Prepare vault paths
+        let parent_dir = persistence_path.parent()
+            .ok_or_else(|| FileSystemError::new("Invalid persistence path"))?;
+        let config_path = parent_dir.join("vault.meta");
+        let data_path = parent_dir.join("vault.bin");
+
+        // Determine initial vault status
+        let vault_status = if config_path.exists() && data_path.exists() {
+            // Vault is initialized but locked
+            crate::api::security::VfsStatus::Locked
+        } else {
+            // Vault not initialized yet
+            crate::api::security::VfsStatus::NotInitialized
+        };
+
+        // Old state loading for backward compatibility
         let state = if persistence_path.exists() {
             // Пытаемся загрузить состояние из файла
             Self::load_state(&persistence_path).unwrap_or_else(|e| {
@@ -134,6 +216,10 @@ impl VirtualFileSystem {
         let vfs = Self {
             state: Arc::new(RwLock::new(state)),
             persistence_path,
+            vault_status: Arc::new(RwLock::new(vault_status)),
+            config_path,
+            data_path,
+            vault_enabled: true,  // Enable vault by default
         };
 
         // Сохраняем начальное состояние, если файла не было
@@ -269,6 +355,316 @@ impl VirtualFileSystem {
         drop(state);
         self.save_state()?;
         Ok(result)
+    }
+
+    // ==================== VAULT SECURITY METHODS ====================
+
+    /// Get current vault status
+    pub fn get_vault_status(&self) -> String {
+        let guard = self.vault_status.read().unwrap();
+        match *guard {
+            crate::api::security::VfsStatus::NotInitialized => "UNINITIALIZED".to_string(),
+            crate::api::security::VfsStatus::Locked => "LOCKED".to_string(),
+            crate::api::security::VfsStatus::Unlocked { .. } => "UNLOCKED".to_string(),
+        }
+    }
+
+    /// Initialize vault with password (first-time setup)
+    pub fn initialize_vault(&self, password: &str) -> Result<(), crate::api::vault_error::VaultError> {
+        use crate::api::security::*;
+        use crate::api::vault_error::VaultError;
+
+        let mut status_guard = self.vault_status.write()
+            .map_err(|_| VaultError::CryptoError("Lock poisoned".into()))?;
+
+        // Check if already initialized
+        if !matches!(*status_guard, VfsStatus::NotInitialized) {
+            return Err(VaultError::CryptoError("Vault already initialized".into()));
+        }
+
+        // Generate salt and derive key
+        let salt = generate_salt();
+        let session = derive_master_key(password, &salt)?;
+
+        // Create verification hash
+        let verification_hash = create_verification_hash(&session);
+
+        // Create and save config
+        let config = VaultConfig::new(
+            ::base64::engine::general_purpose::STANDARD.encode(&salt),
+            verification_hash,
+        );
+        save_vault_config(&self.config_path, &config)?;
+
+        // Get default VFS state
+        let vfs_state = VfsState::default();
+
+        // Serialize with Bincode
+        let serialized = bincode::serialize(&vfs_state)
+            .map_err(|e| VaultError::Serialization(format!("Bincode serialization failed: {}", e)))?;
+
+        // Encrypt
+        let encrypted_blob = encrypt_blob(&serialized, &session)?;
+
+        // Save encrypted data atomically
+        atomic_write(&self.data_path, &encrypted_blob)?;
+
+        // Update status to Unlocked
+        *status_guard = VfsStatus::Unlocked {
+            fs: vfs_state,
+            session,
+        };
+
+        Ok(())
+    }
+
+    /// Unlock vault with password
+    pub fn unlock_vault(&self, password: &str) -> Result<(), crate::api::vault_error::VaultError> {
+        use crate::api::security::*;
+        use crate::api::vault_error::VaultError;
+
+        let mut status_guard = self.vault_status.write()
+            .map_err(|_| VaultError::CryptoError("Lock poisoned".into()))?;
+
+        // Check if locked
+        if !matches!(*status_guard, VfsStatus::Locked) {
+            return Err(VaultError::CryptoError("Vault is not locked".into()));
+        }
+
+        // Load config
+        let config = load_vault_config(&self.config_path)?;
+
+        // Decode salt
+        let salt = ::base64::engine::general_purpose::STANDARD.decode(&config.kdf_salt)
+            .map_err(|e| VaultError::Base64Error(e))?;
+
+        // Derive key from password
+        let session = derive_master_key(password, &salt)?;
+
+        // Verify password
+        if !verify_key(&session, &config.auth_verification_hash)? {
+            return Err(VaultError::InvalidPassword);
+        }
+
+        // Load encrypted data
+        let encrypted_blob = std::fs::read(&self.data_path)?;
+
+        // Decrypt
+        let decrypted = decrypt_blob(&encrypted_blob, &session)?;
+
+        // Deserialize with Bincode
+        let vfs_state: VfsState = bincode::deserialize(&decrypted)
+            .map_err(|e| VaultError::Serialization(format!("Bincode deserialization failed: {}", e)))?;
+
+        // Update status to Unlocked
+        *status_guard = VfsStatus::Unlocked {
+            fs: vfs_state,
+            session,
+        };
+
+        Ok(())
+    }
+
+    /// Lock vault (zeroize keys)
+    pub fn lock_vault(&self) -> Result<(), crate::api::vault_error::VaultError> {
+        use crate::api::security::*;
+        use crate::api::vault_error::VaultError;
+
+        let mut status_guard = self.vault_status.write()
+            .map_err(|_| VaultError::CryptoError("Lock poisoned".into()))?;
+
+        // Check if unlocked
+        if !matches!(*status_guard, VfsStatus::Unlocked { .. }) {
+            return Ok(()); // Already locked, nothing to do
+        }
+
+        // Save current state before locking
+        if let VfsStatus::Unlocked { ref fs, ref session } = *status_guard {
+            // Serialize
+            let serialized = bincode::serialize(fs)
+                .map_err(|e| VaultError::Serialization(format!("Bincode serialization failed: {}", e)))?;
+
+            // Encrypt
+            let encrypted_blob = encrypt_blob(&serialized, session)?;
+
+            // Save atomically
+            atomic_write(&self.data_path, &encrypted_blob)?;
+        }
+
+        // Change status to Locked (this will drop session and trigger Zeroize)
+        *status_guard = VfsStatus::Locked;
+
+        Ok(())
+    }
+
+    // ========== Recovery Methods ==========
+
+    /// Setup recovery for vault
+    pub fn setup_recovery(
+        &self,
+        channels: Vec<crate::api::notification_channels::ChannelConfig>,
+    ) -> Result<String, crate::api::vault_error::VaultError> {
+        use crate::api::security::*;
+        use crate::api::vault_error::VaultError;
+        use crate::api::recovery::RecoveryManager;
+
+        // Get current unlocked session
+        let status_guard = self.vault_status.read()
+            .map_err(|_| VaultError::CryptoError("Lock poisoned".into()))?;
+
+        let session = match *status_guard {
+            VfsStatus::Unlocked { ref session, .. } => session.clone(),
+            _ => return Err(VaultError::Locked),
+        };
+
+        // Setup recovery and get recovery key + config
+        let (recovery_key, recovery_config) = RecoveryManager::setup_recovery(&session, channels)?;
+        println!("[VFS] Recovery key and config generated successfully");
+
+        // Load existing vault config
+        let mut config = load_vault_config(&self.config_path)?;
+        println!("[VFS] Loaded existing config from: {:?}", self.config_path);
+
+        // Update with recovery config
+        config.recovery = Some(recovery_config);
+        println!("[VFS] Updated config with recovery configuration");
+
+        // Save updated config
+        save_vault_config(&self.config_path, &config)?;
+        println!("[VFS] Saved updated config with recovery to: {:?}", self.config_path);
+
+        // Return recovery key mnemonic for user to save
+        Ok(recovery_key.to_mnemonic())
+    }
+
+    /// Request password reset
+    pub fn request_password_reset(
+        &self,
+        channel_type: &str,
+    ) -> Result<(), crate::api::vault_error::VaultError> {
+        use crate::api::security::*;
+        use crate::api::vault_error::VaultError;
+        use crate::api::recovery::RecoveryManager;
+
+        // Load vault config
+        let config = load_vault_config(&self.config_path)?;
+
+        // Get recovery config
+        let recovery_config = config.recovery
+            .ok_or_else(|| VaultError::CryptoError("Recovery not configured".into()))?;
+
+        // Create recovery session and send code
+        let session = RecoveryManager::initiate_recovery(&recovery_config, channel_type)?;
+
+        // Store session globally (we'll use a thread-local for now)
+        RECOVERY_SESSION.with(|cell| {
+            *cell.borrow_mut() = Some(session);
+        });
+
+        Ok(())
+    }
+
+    /// Complete password reset
+    pub fn complete_password_reset(
+        &self,
+        code: &str,
+        new_password: &str,
+    ) -> Result<(), crate::api::vault_error::VaultError> {
+        use crate::api::security::*;
+        use crate::api::vault_error::VaultError;
+        use crate::api::recovery::RecoveryManager;
+
+        // Get recovery session
+        let session = RECOVERY_SESSION.with(|cell| {
+            cell.borrow_mut().take()
+        }).ok_or_else(|| VaultError::CryptoError("No active recovery session".into()))?;
+
+        // Verify code and decrypt recovery key
+        let _recovery_key = session.verify_and_decrypt(code)?;
+
+        // Load vault config to get salt
+        let config = load_vault_config(&self.config_path)?;
+        let salt = ::base64::engine::general_purpose::STANDARD.decode(&config.kdf_salt)
+            .map_err(|e| VaultError::Base64Error(e))?;
+
+        // Get recovery config
+        let recovery_config = config.recovery
+            .ok_or_else(|| VaultError::CryptoError("Recovery not configured".into()))?;
+
+        // Generate new master key from new password
+        let (_new_session, new_hash) = RecoveryManager::complete_recovery(
+            &_recovery_key,
+            new_password,
+            &salt,
+        )?;
+
+        // TODO: Implement proper recovery key encryption of vault data
+        // Current limitation: This resets the vault with new password
+        // but existing encrypted data remains inaccessible without old password.
+        // Future: Store vault data encrypted with both master key AND recovery key
+
+        // Update config with new verification hash
+        let mut new_config = VaultConfig::new(
+            config.kdf_salt.clone(),
+            new_hash,
+        );
+        new_config.recovery = Some(recovery_config);
+        save_vault_config(&self.config_path, &new_config)?;
+
+        // Update vault status to locked
+        let mut status_guard = self.vault_status.write()
+            .map_err(|_| VaultError::CryptoError("Lock poisoned".into()))?;
+        *status_guard = VfsStatus::Locked;
+
+        Ok(())
+    }
+
+    /// Get recovery channels
+    pub fn get_recovery_channels(&self) -> Result<Vec<String>, crate::api::vault_error::VaultError> {
+        use crate::api::security::*;
+        use crate::api::vault_error::VaultError;
+
+        // Load vault config
+        println!("[VFS] Loading config from: {:?}", self.config_path);
+        let config = load_vault_config(&self.config_path)?;
+        println!("[VFS] Config loaded successfully, recovery present: {}", config.recovery.is_some());
+
+        // Get recovery config
+        let recovery_config = config.recovery
+            .ok_or_else(|| {
+                println!("[VFS] Recovery config is None!");
+                VaultError::CryptoError("Recovery not configured".into())
+            })?;
+
+        println!("[VFS] Recovery config has {} channels", recovery_config.channels.len());
+
+        // Extract channel types
+        let channels: Vec<String> = recovery_config.channels
+            .iter()
+            .map(|c| format!("{:?}", c.channel_type()))
+            .collect();
+
+        println!("[VFS] Returning channels: {:?}", channels);
+        Ok(channels)
+    }
+
+    /// Check if vault is unlocked
+    fn check_vault_unlocked(&self) -> Result<(), crate::api::vault_error::VaultError> {
+        use crate::api::security::*;
+        use crate::api::vault_error::VaultError;
+
+        if !self.vault_enabled {
+            return Ok(()); // Vault disabled, pass through
+        }
+
+        let status_guard = self.vault_status.read()
+            .map_err(|_| VaultError::CryptoError("Lock poisoned".into()))?;
+
+        match *status_guard {
+            VfsStatus::Unlocked { .. } => Ok(()),
+            VfsStatus::Locked => Err(VaultError::Locked),
+            VfsStatus::NotInitialized => Err(VaultError::NotInitialized),
+        }
     }
 }
 
@@ -650,7 +1046,7 @@ impl FileSystem for VirtualFileSystem {
                     Ok(text) => Ok(text),
                     Err(_) => {
                         // Если не UTF-8, возвращаем base64
-                        Ok(base64::encode(&content))
+                        Ok(::base64::engine::general_purpose::STANDARD.encode(&content))
                     }
                 }
             }

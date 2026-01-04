@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-import type { AppConfig, FileSystemBackend, ViewMode } from '../types'
+import type { AppConfig } from '../types'
 import { useTheme } from '../composables/useTheme'
+import { useVault } from '../composables/useVault'
 
 const emit = defineEmits<{
   close: []
@@ -17,12 +18,28 @@ const config = ref<AppConfig>({
 
 const saving = ref(false)
 const message = ref<{ text: string; type: 'success' | 'error' } | null>(null)
+const vault = useVault()
+const vaultActionInProgress = ref(false)
+const showResetConfirm = ref(false)
+const resetConfirmStep = ref(1)
+
+// Vault directory management
+const vaultDirectory = ref<string>('')
+const defaultVaultDirectory = ref<string>('')
+const isCustomVaultPath = ref(false)
+const showMigrationConfirm = ref(false)
+const pendingVaultPath = ref<string | null>(null)
 
 // Загрузить конфигурацию при монтировании
 onMounted(async () => {
   try {
     const loadedConfig = await invoke<AppConfig>('get_config')
     config.value = loadedConfig
+
+    // Load vault directory info if using virtual backend
+    if (config.value.filesystem_backend === 'virtual') {
+      await loadVaultDirectoryInfo()
+    }
   } catch (error) {
     console.error('Failed to load config:', error)
     showMessage(`Failed to load settings: ${error}`, 'error')
@@ -40,6 +57,12 @@ const saveSettings = async () => {
     // Apply theme immediately after saving
     const { setTheme } = useTheme()
     await setTheme(config.value.theme as any)
+
+    // Re-check vault status (important when switching between Real/Virtual FS)
+    await vault.checkStatus()
+
+    // Notify toolbar to update FS badge
+    window.dispatchEvent(new Event('fs-config-changed'))
 
     showMessage('Settings saved successfully!', 'success')
 
@@ -61,6 +84,154 @@ const showMessage = (text: string, type: 'success' | 'error') => {
   setTimeout(() => {
     message.value = null
   }, 3000)
+}
+
+// Vault management functions
+const lockVault = async () => {
+  try {
+    vaultActionInProgress.value = true
+    await vault.lock()
+    showMessage('Vault locked successfully. Reloading...', 'success')
+    // Reload page to ensure all state is cleared and vault overlay shows
+    setTimeout(() => {
+      window.location.reload()
+    }, 1000)
+  } catch (error) {
+    console.error('Failed to lock vault:', error)
+    showMessage(`Failed to lock vault: ${error}`, 'error')
+    vaultActionInProgress.value = false
+  }
+}
+
+const unlockVault = () => {
+  // This will show the unlock overlay
+  vault.forceLock()
+  emit('close')
+}
+
+const resetVault = () => {
+  // Show custom confirmation dialog
+  resetConfirmStep.value = 1
+  showResetConfirm.value = true
+}
+
+const confirmReset = () => {
+  if (resetConfirmStep.value === 1) {
+    // First confirmation passed, show second
+    resetConfirmStep.value = 2
+  } else if (resetConfirmStep.value === 2) {
+    // Both confirmations passed, execute reset
+    executeReset()
+  }
+}
+
+const cancelReset = () => {
+  showResetConfirm.value = false
+  resetConfirmStep.value = 1
+}
+
+const executeReset = async () => {
+  showResetConfirm.value = false
+
+  try {
+    vaultActionInProgress.value = true
+    await invoke('vault_reset')
+    console.log('Vault reset reset successfully!')
+    showMessage('Vault reset successfully! Reloading application...', 'success')
+
+    // Close settings and reload after a delay
+    setTimeout(() => {
+      window.location.reload()
+    }, 1500)
+  } catch (error) {
+    console.error('Failed to reset vault:', error)
+    showMessage(`Failed to reset vault: ${error}`, 'error')
+  } finally {
+    vaultActionInProgress.value = false
+    resetConfirmStep.value = 1
+  }
+}
+
+// Vault directory management functions
+const loadVaultDirectoryInfo = async () => {
+  try {
+    const [current, defaultDir] = await Promise.all([
+      invoke<string>('vault_get_current_directory'),
+      invoke<string>('vault_get_default_directory')
+    ])
+
+    vaultDirectory.value = current
+    defaultVaultDirectory.value = defaultDir
+    isCustomVaultPath.value = current !== defaultDir
+  } catch (error) {
+    console.error('Failed to load vault directory info:', error)
+  }
+}
+
+const selectVaultDirectory = async () => {
+  try {
+    const selected = await invoke<string | null>('vault_select_directory')
+
+    if (selected) {
+      // Show migration confirmation dialog
+      pendingVaultPath.value = selected
+      showMigrationConfirm.value = true
+    }
+  } catch (error) {
+    showMessage(`Failed to select directory: ${error}`, 'error')
+  }
+}
+
+const confirmVaultMigration = async (migrate: boolean) => {
+  if (!pendingVaultPath.value) return
+
+  try {
+    vaultActionInProgress.value = true
+
+    await invoke('vault_set_custom_directory', {
+      path: pendingVaultPath.value,
+      migrateData: migrate
+    })
+
+    await loadVaultDirectoryInfo()
+
+    showMessage(
+      migrate
+        ? 'Vault directory changed and data migrated successfully!'
+        : 'Vault directory changed. Old data remains in previous location.',
+      'success'
+    )
+
+    if (migrate) {
+      // Reload to reinitialize vault with new location
+      setTimeout(() => window.location.reload(), 1500)
+    }
+  } catch (error) {
+    showMessage(`Failed to change vault directory: ${error}`, 'error')
+  } finally {
+    vaultActionInProgress.value = false
+    showMigrationConfirm.value = false
+    pendingVaultPath.value = null
+  }
+}
+
+const resetToDefaultVaultDirectory = async () => {
+  try {
+    vaultActionInProgress.value = true
+
+    await invoke('vault_reset_to_default_directory', {
+      migrateData: true
+    })
+
+    await loadVaultDirectoryInfo()
+    showMessage('Vault directory reset to default and data migrated!', 'success')
+
+    setTimeout(() => window.location.reload(), 1500)
+  } catch (error) {
+    showMessage(`Failed to reset vault directory: ${error}`, 'error')
+  } finally {
+    vaultActionInProgress.value = false
+  }
 }
 
 // Отменить изменения
@@ -121,6 +292,107 @@ const getThemeDescription = (theme: string): string => {
                 <span class="radio-description">Use in-memory virtual file system for testing</span>
               </label>
             </div>
+          </div>
+        </div>
+
+        <!-- Vault Security -->
+        <div v-if="config.filesystem_backend === 'virtual'" class="setting-section">
+          <h3 class="section-title">Vault Security</h3>
+
+          <div class="setting-item">
+            <label class="setting-label">Status:</label>
+            <div class="flex items-center gap-3">
+              <span class="px-3 py-1 rounded text-xs font-medium" :class="{
+                'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400': vault.isUnlocked.value,
+                'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400': !vault.isUnlocked.value
+              }">
+                {{ vault.isUnlocked.value ? '🔓 Unlocked' : '🔒 Locked' }}
+              </span>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <label class="setting-label">Actions:</label>
+            <div class="flex gap-2">
+              <button
+                v-if="vault.isUnlocked.value"
+                @click="lockVault"
+                :disabled="vaultActionInProgress"
+                class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {{ vaultActionInProgress ? 'Locking...' : '🔒 Lock Vault' }}
+              </button>
+
+              <button
+                v-else
+                @click="unlockVault"
+                :disabled="vaultActionInProgress"
+                class="px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                🔓 Unlock Vault
+              </button>
+            </div>
+          </div>
+
+          <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+            Lock vault to require password authentication. Unlock to access encrypted data.
+          </div>
+
+          <!-- Vault Directory Settings -->
+          <div class="setting-item mt-4">
+            <label class="setting-label font-semibold">Vault Storage Location:</label>
+
+            <div class="space-y-2">
+              <div class="text-sm text-gray-700 dark:text-gray-300">
+                <span class="font-medium">Current:</span>
+                <code class="ml-2 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs block mt-1">
+                  {{ vaultDirectory }}
+                </code>
+              </div>
+
+              <div class="text-xs text-gray-500 dark:text-gray-400">
+                <span class="font-medium">Default:</span>
+                <code class="ml-2">{{ defaultVaultDirectory }}</code>
+              </div>
+            </div>
+
+            <div class="flex gap-2 mt-3">
+              <button
+                @click="selectVaultDirectory"
+                :disabled="vaultActionInProgress"
+                class="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                📁 Change Location
+              </button>
+
+              <button
+                v-if="isCustomVaultPath"
+                @click="resetToDefaultVaultDirectory"
+                :disabled="vaultActionInProgress"
+                class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white text-sm font-medium rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                🔄 Reset to Default
+              </button>
+            </div>
+
+            <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">
+              Change where vault files are stored. Data can be automatically migrated to the new location.
+            </div>
+          </div>
+
+          <!-- Danger Zone: Reset Vault -->
+          <div class="setting-item mt-4 pt-4 border-t border-red-200 dark:border-red-800">
+            <label class="setting-label text-red-600 dark:text-red-400 font-bold">⚠️ Danger Zone:</label>
+            <button
+              @click="resetVault"
+              :disabled="vaultActionInProgress"
+              class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              🗑️ Reset Vault (Delete All Data)
+            </button>
+            <p class="text-xs text-red-600 dark:text-red-400 mt-2">
+              This will permanently delete all vault data, settings, and recovery configuration. This action cannot be undone!
+            </p>
           </div>
         </div>
 
@@ -185,6 +457,122 @@ const getThemeDescription = (theme: string): string => {
         >
           Cancel
         </button>
+      </div>
+    </div>
+
+    <!-- Reset Vault Confirmation Dialog -->
+    <div v-if="showResetConfirm" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[2000]" @click.self="cancelReset">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[500px] border-2 border-red-500">
+        <!-- Title -->
+        <div class="bg-red-600 text-white px-4 py-3 flex items-center gap-2">
+          <span class="text-xl">⚠️</span>
+          <h3 class="font-bold text-lg">
+            {{ resetConfirmStep === 1 ? 'Confirm Vault Reset' : 'Final Warning!' }}
+          </h3>
+        </div>
+
+        <!-- Content -->
+        <div class="p-6">
+          <div v-if="resetConfirmStep === 1" class="space-y-4">
+            <p class="text-gray-800 dark:text-gray-200 font-semibold">
+              This will PERMANENTLY delete ALL vault data!
+            </p>
+            <div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded p-4">
+              <p class="text-sm text-gray-700 dark:text-gray-300 mb-2 font-semibold">This includes:</p>
+              <ul class="list-disc list-inside text-sm text-gray-700 dark:text-gray-300 space-y-1">
+                <li>All encrypted files and folders</li>
+                <li>Password configuration</li>
+                <li>Recovery settings and keys</li>
+                <li>All vault metadata</li>
+              </ul>
+            </div>
+            <p class="text-red-600 dark:text-red-400 font-bold text-sm">
+              ⚠️ This action CANNOT be undone!
+            </p>
+          </div>
+
+          <div v-else class="space-y-4">
+            <p class="text-red-600 dark:text-red-400 font-bold text-lg">
+              Are you ABSOLUTELY sure?
+            </p>
+            <p class="text-gray-700 dark:text-gray-300 text-sm">
+              This is your last chance to cancel. After clicking "Yes, Delete Everything", all your vault data will be permanently destroyed.
+            </p>
+            <div class="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-800 rounded p-3">
+              <p class="text-sm text-yellow-800 dark:text-yellow-300">
+                💡 <strong>Tip:</strong> Make sure you have backups of any important data before proceeding.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="px-6 pb-6 flex justify-end gap-3">
+          <button
+            @click="cancelReset"
+            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded font-medium transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            @click="confirmReset"
+            class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-medium transition-colors"
+          >
+            {{ resetConfirmStep === 1 ? 'Yes, I Understand' : 'Yes, Delete Everything' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Migration Confirmation Dialog -->
+    <div v-if="showMigrationConfirm" class="fixed inset-0 bg-black/60 flex items-center justify-center z-[2000]" @click.self="showMigrationConfirm = false">
+      <div class="bg-white dark:bg-gray-800 rounded-lg shadow-2xl w-[500px] border-2 border-blue-500">
+        <div class="bg-blue-600 text-white px-4 py-3 flex items-center gap-2">
+          <span class="text-xl">📦</span>
+          <h3 class="font-bold text-lg">Migrate Vault Data?</h3>
+        </div>
+
+        <div class="p-6 space-y-4">
+          <p class="text-gray-800 dark:text-gray-200">
+            Do you want to move your existing vault data to the new location?
+          </p>
+
+          <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-4">
+            <p class="text-sm text-gray-700 dark:text-gray-300 mb-2 font-semibold">Options:</p>
+            <ul class="list-disc list-inside text-sm text-gray-700 dark:text-gray-300 space-y-1">
+              <li><strong>Migrate:</strong> Copy all vault files to new location and delete old files</li>
+              <li><strong>Don't Migrate:</strong> Start fresh in new location (old data remains accessible at old location)</li>
+            </ul>
+          </div>
+
+          <div class="text-sm text-gray-600 dark:text-gray-400">
+            <strong>New location:</strong>
+            <code class="block mt-1 px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-xs">
+              {{ pendingVaultPath }}
+            </code>
+          </div>
+        </div>
+
+        <div class="px-6 pb-6 flex justify-end gap-3">
+          <button
+            @click="showMigrationConfirm = false"
+            class="px-4 py-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 rounded font-medium transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            @click="confirmVaultMigration(false)"
+            class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded font-medium transition-colors"
+          >
+            Don't Migrate
+          </button>
+          <button
+            @click="confirmVaultMigration(true)"
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded font-medium transition-colors"
+          >
+            Migrate Data
+          </button>
+        </div>
       </div>
     </div>
   </div>

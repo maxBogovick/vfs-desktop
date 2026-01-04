@@ -137,6 +137,7 @@ export type ActivePanel = 'left' | 'right';
 export interface PanelState {
   tabs: TabState[];
   active_tab_id?: number;
+  filesystem_backend?: FileSystemBackend;
 }
 
 export interface DualPanelConfig {

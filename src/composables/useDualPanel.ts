@@ -1,5 +1,5 @@
 import {computed, ref} from 'vue';
-import type {ActivePanel, DualPanelConfig, FileItem, PanelMode, Tab} from '../types';
+import type {ActivePanel, DualPanelConfig, FileItem, PanelMode, Tab, FileSystemBackend} from '../types';
 
 // Module-level shared state for dual panel mode
 const panelMode = ref<PanelMode>('single');
@@ -9,14 +9,17 @@ const activePanel = ref<ActivePanel>('left');
 // Left panel state
 const leftPanelTabs = ref<Tab[]>([]);
 const leftPanelActiveTabId = ref<number | undefined>(undefined);
+const leftPanelFilesystem = ref<FileSystemBackend>('real');
 
 // Right panel state
 const rightPanelTabs = ref<Tab[]>([]);
 const rightPanelActiveTabId = ref<number | undefined>(undefined);
+const rightPanelFilesystem = ref<FileSystemBackend>('real');
 
 // Active panel methods (for keyboard shortcuts in dual mode)
 export interface ActivePanelMethods {
   getFiles: () => FileItem[];
+  getSelectedIds: () => Set<string>;
   getSelectedItems: () => FileItem[];
   selectAll: () => void;
   clearSelection: () => void;
@@ -114,6 +117,14 @@ export function useDualPanel() {
     leftPanelWidthPercent.value = Math.max(20, Math.min(80, percent));
   };
 
+  const switchPanelFilesystem = (panel: ActivePanel, backend: FileSystemBackend) => {
+    if (panel === 'left') {
+      leftPanelFilesystem.value = backend;
+    } else {
+      rightPanelFilesystem.value = backend;
+    }
+  };
+
   const loadDualPanelState = (config: DualPanelConfig) => {
     leftPanelWidthPercent.value = config.left_panel_width_percent;
     activePanel.value = config.active_panel;
@@ -128,6 +139,7 @@ export function useDualPanel() {
         historyIndex: 0,
       }));
       leftPanelActiveTabId.value = config.left_panel.active_tab_id;
+      leftPanelFilesystem.value = config.left_panel.filesystem_backend || 'real';
     }
 
     // Load right panel tabs
@@ -140,6 +152,7 @@ export function useDualPanel() {
         historyIndex: 0,
       }));
       rightPanelActiveTabId.value = config.right_panel.active_tab_id;
+      rightPanelFilesystem.value = config.right_panel.filesystem_backend || 'real';
     }
   };
 
@@ -153,6 +166,7 @@ export function useDualPanel() {
           name: tab.name,
         })),
         active_tab_id: leftPanelActiveTabId.value,
+        filesystem_backend: leftPanelFilesystem.value,
       },
       right_panel: {
         tabs: rightPanelTabs.value.map(tab => ({
@@ -161,6 +175,7 @@ export function useDualPanel() {
           name: tab.name,
         })),
         active_tab_id: rightPanelActiveTabId.value,
+        filesystem_backend: rightPanelFilesystem.value,
       },
       active_panel: activePanel.value,
     };
@@ -173,8 +188,10 @@ export function useDualPanel() {
     activePanel,
     leftPanelTabs,
     leftPanelActiveTabId,
+    leftPanelFilesystem,
     rightPanelTabs,
     rightPanelActiveTabId,
+    rightPanelFilesystem,
 
     // Computed
     isDualMode,
@@ -185,6 +202,7 @@ export function useDualPanel() {
     // Methods
     togglePanelMode,
     switchActivePanel,
+    switchPanelFilesystem,
     setPanelSplit,
     loadDualPanelState,
     serializeDualPanelState,

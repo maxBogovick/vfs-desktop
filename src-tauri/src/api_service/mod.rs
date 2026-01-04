@@ -29,6 +29,7 @@ pub mod bookmarks;
 pub mod system;
 pub mod config;
 pub mod models;
+pub mod vault;
 
 pub use error::{ApiError, ApiResult};
 pub use files::FileService;
@@ -36,6 +37,7 @@ pub use batch::BatchService;
 pub use bookmarks::BookmarkService;
 pub use system::SystemService;
 pub use config::ConfigService;
+pub use vault::VaultService;
 
 /// Main API facade that groups all services
 pub struct Api {
@@ -44,6 +46,7 @@ pub struct Api {
     pub bookmarks: BookmarkService,
     pub system: SystemService,
     pub config: ConfigService,
+    pub vault: VaultService,
 }
 
 impl Api {
@@ -54,6 +57,7 @@ impl Api {
             bookmarks: BookmarkService::new(),
             system: SystemService::new(),
             config: ConfigService::new(),
+            vault: VaultService::new(),
         }
     }
 }

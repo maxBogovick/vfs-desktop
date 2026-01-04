@@ -2,6 +2,41 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmtpConfig {
+    pub server: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,  // TODO: Encrypt this when storing (e.g., via vault)
+    pub from_address: String,  // Sender email, e.g., "no-reply@yourapp.com"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VaultConfig {
+    /// Custom vault directory path (None = use default)
+    pub custom_path: Option<String>,
+
+    /// Whether to use custom path or default system path
+    pub use_custom_path: bool,
+}
+
+impl Default for VaultConfig {
+    fn default() -> Self {
+        Self {
+            custom_path: None,
+            use_custom_path: false,
+        }
+    }
+}
+
+/// Paths to vault files
+#[derive(Debug, Clone)]
+pub struct VaultPaths {
+    pub fs_json: PathBuf,
+    pub vault_meta: PathBuf,
+    pub vault_bin: PathBuf,
+    pub dir: PathBuf,
+}
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum FileSystemBackend {
@@ -43,6 +78,14 @@ impl Default for PanelMode {
 pub struct PanelState {
     pub tabs: Vec<TabState>,
     pub active_tab_id: Option<u64>,
+
+    /// Filesystem backend для этой панели (Real или Virtual)
+    #[serde(default = "default_panel_filesystem")]
+    pub filesystem_backend: FileSystemBackend,
+}
+
+fn default_panel_filesystem() -> FileSystemBackend {
+    FileSystemBackend::Real
 }
 
 impl Default for PanelState {
@@ -50,6 +93,7 @@ impl Default for PanelState {
         Self {
             tabs: vec![],
             active_tab_id: None,
+            filesystem_backend: FileSystemBackend::Real,
         }
     }
 }
@@ -204,6 +248,7 @@ impl Default for UIState {
             dual_panel_config: DualPanelConfig::default(),
             window: WindowState::default(),
             sidebar: SidebarState::default(),
+            edit_mode_enabled: None,
         }
     }
 }
@@ -233,6 +278,10 @@ pub struct AppConfig {
 
     #[serde(default)]
     pub ui_state: UIState,
+    pub smtp_config: Option<SmtpConfig>,  // New: Optional SMTP for recovery
+
+    #[serde(default)]
+    pub vault: VaultConfig,
 }
 
 fn default_show_hidden() -> bool {
@@ -252,6 +301,8 @@ impl Default for AppConfig {
             theme: "luna".to_string(),
             bookmarks: Vec::new(),
             ui_state: UIState::default(),
+            smtp_config: None,
+            vault: VaultConfig::default(),
         }
     }
 }
@@ -305,6 +356,70 @@ impl AppConfig {
 
         Ok(())
     }
+
+    /// Get the actual vault directory path (resolved from config or default)
+    pub fn get_vault_dir(&self) -> Result<PathBuf, String> {
+        if self.vault.use_custom_path {
+            if let Some(ref custom_path) = self.vault.custom_path {
+                let path = PathBuf::from(custom_path);
+
+                // Validate custom path exists
+                if !path.exists() {
+                    tracing::warn!("Custom vault path does not exist: {:?}, falling back to default", path);
+                    return Self::default_vault_dir();
+                }
+
+                // Validate it's a directory
+                if !path.is_dir() {
+                    tracing::warn!("Custom vault path is not a directory: {:?}, falling back to default", path);
+                    return Self::default_vault_dir();
+                }
+
+                return Ok(path);
+            }
+        }
+
+        // Fallback to default
+        Self::default_vault_dir()
+    }
+
+    /// Get default vault directory path
+    pub fn default_vault_dir() -> Result<PathBuf, String> {
+        let data_dir = dirs::data_local_dir()
+            .ok_or_else(|| "Could not determine local data directory".to_string())?;
+
+        let vault_dir = data_dir.join("vfdir").join("vault");
+
+        // Create directory if it doesn't exist
+        if !vault_dir.exists() {
+            fs::create_dir_all(&vault_dir)
+                .map_err(|e| {
+                    tracing::error!("Failed to create vault directory at {:?}: {}", vault_dir, e);
+                    format!("Failed to create vault directory: {}", e)
+                })?;
+
+            tracing::info!("Created vault directory at {:?}", vault_dir);
+        }
+
+        // Verify directory is accessible
+        if let Err(e) = vault_dir.read_dir() {
+            return Err(format!("Vault directory is not accessible: {}", e));
+        }
+
+        Ok(vault_dir)
+    }
+
+    /// Get vault file paths (fs.json, vault.meta, vault.bin)
+    pub fn get_vault_paths(&self) -> Result<VaultPaths, String> {
+        let vault_dir = self.get_vault_dir()?;
+
+        Ok(VaultPaths {
+            fs_json: vault_dir.join("fs.json"),
+            vault_meta: vault_dir.join("vault.meta"),
+            vault_bin: vault_dir.join("vault.bin"),
+            dir: vault_dir,
+        })
+    }
 }
 
 #[cfg(test)]
@@ -329,6 +444,8 @@ mod tests {
             theme: "dark".to_string(),
             bookmarks: vec![],
             ui_state: Default::default(),
+            smtp_config: None,
+            vault: Default::default(),
         };
 
         let json = serde_json::to_string(&config).unwrap();

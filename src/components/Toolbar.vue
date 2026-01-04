@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue';
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { useVault } from '../composables/useVault';
 import GroupByDropdown from './GroupByDropdown.vue';
 import type { Tab, ViewMode, PanelMode } from '../types';
 import type { GroupBy } from '../composables/useGrouping';
@@ -49,6 +50,12 @@ const suggestions = ref<string[]>([]);
 const selectedSuggestionIndex = ref(-1);
 const showSuggestions = ref(false);
 let suggestionTimeout: number | null = null;
+
+// File system type and vault status
+const fsType = ref<'real' | 'virtual'>('real');
+const vaultStatus = ref<'UNLOCKED' | 'LOCKED' | 'UNINITIALIZED' | 'DISABLED'>('DISABLED');
+const vaultActionInProgress = ref(false);
+const vault = useVault();
 
 const fullPath = computed(() => {
   const path = props.currentPath.join('/');
@@ -172,6 +179,60 @@ watch(fullPath, () => {
   if (isEditMode.value) {
     exitEditMode();
   }
+});
+
+// Vault management functions
+const lockVault = async () => {
+  try {
+    vaultActionInProgress.value = true;
+    await vault.lock();
+    // Reload page to ensure all state is cleared and vault overlay shows
+    setTimeout(() => {
+      window.location.reload();
+    }, 300);
+  } catch (error) {
+    console.error('[Toolbar] Failed to lock vault:', error);
+    vaultActionInProgress.value = false;
+  }
+};
+
+const unlockVault = () => {
+  // This will trigger the vault overlay to show
+  vault.forceLock();
+};
+
+// Load file system type and vault status
+const loadFsInfo = async () => {
+  try {
+    const config = await invoke<any>('get_config');
+
+    // Backend can be 'real', 'Real', 'virtual', or 'Virtual'
+    const backend = config.filesystem_backend?.toLowerCase() || 'real';
+    fsType.value = backend === 'virtual' ? 'virtual' : 'real';
+
+    if (fsType.value === 'virtual') {
+      const status = await invoke<string>('vault_get_status');
+      vaultStatus.value = status as any;
+    } else {
+      vaultStatus.value = 'DISABLED';
+    }
+  } catch (error) {
+    console.error('[Toolbar] Failed to load FS info:', error);
+  }
+};
+
+onMounted(() => {
+  loadFsInfo();
+  // Refresh every 2 seconds to keep status updated
+  setInterval(loadFsInfo, 2000);
+
+  // Listen for config changes from Settings
+  window.addEventListener('fs-config-changed', loadFsInfo);
+});
+
+// Cleanup on unmount
+onUnmounted(() => {
+  window.removeEventListener('fs-config-changed', loadFsInfo);
 });
 </script>
 
@@ -391,6 +452,58 @@ watch(fullPath, () => {
       >
         {{ panelMode === 'dual' ? '⊟' : '⊞⊞' }}
       </button>
+
+      <!-- Separator -->
+      <div class="w-px h-[24px] bg-[var(--vf-border-default)] ml-1"></div>
+
+      <!-- File System Type & Vault Status Badge -->
+      <div class="flex items-center gap-1.5 px-2">
+        <!-- FS Type Badge -->
+        <div :class="[
+          'px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wide',
+          fsType === 'virtual'
+            ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+        ]" :title="fsType === 'virtual' ? 'Virtual File System' : 'Real File System'">
+          {{ fsType === 'virtual' ? '💾 Virtual' : '📁 Real' }}
+        </div>
+
+        <!-- Vault Status Badge (only for Virtual FS) -->
+        <div v-if="fsType === 'virtual' && vaultStatus !== 'DISABLED'" :class="[
+          'px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1',
+          vaultStatus === 'UNLOCKED' && 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+          vaultStatus === 'LOCKED' && 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+          vaultStatus === 'UNINITIALIZED' && 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+        ]" :title="`Vault ${vaultStatus.toLowerCase()}`">
+          <span>{{ vaultStatus === 'UNLOCKED' ? '🔓' : vaultStatus === 'LOCKED' ? '🔒' : '🔑' }}</span>
+          <span>{{ vaultStatus === 'UNLOCKED' ? 'Unlocked' : vaultStatus === 'LOCKED' ? 'Locked' : 'Setup' }}</span>
+        </div>
+
+        <!-- Vault Action Buttons (only for Virtual FS and when initialized) -->
+        <div v-if="fsType === 'virtual' && vaultStatus !== 'DISABLED' && vaultStatus !== 'UNINITIALIZED'" class="flex gap-0.5">
+          <!-- Lock Button (when unlocked) -->
+          <button
+            v-if="vaultStatus === 'UNLOCKED'"
+            @click="lockVault"
+            :disabled="vaultActionInProgress"
+            class="w-[24px] h-[24px] bg-orange-500 hover:bg-orange-600 text-white rounded flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs"
+            title="Lock Vault"
+          >
+            🔒
+          </button>
+
+          <!-- Unlock Button (when locked) -->
+          <button
+            v-if="vaultStatus === 'LOCKED'"
+            @click="unlockVault"
+            :disabled="vaultActionInProgress"
+            class="w-[24px] h-[24px] bg-green-500 hover:bg-green-600 text-white rounded flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-xs"
+            title="Unlock Vault"
+          >
+            🔓
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>

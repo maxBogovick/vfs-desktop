@@ -60,6 +60,7 @@ impl ErrorResponse {
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListDirectoryQuery {
     pub path: String,
+    pub panel_fs: Option<String>
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -68,69 +69,83 @@ pub struct ListDirectoryResponse {
 }
 
 #[derive(Debug, Deserialize, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase")]
 pub struct GetFileInfoQuery {
     pub path: String,
+    pub panel_fs: Option<String>
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct CreateFolderRequest {
     pub path: String,
     pub name: String,
+    pub panel_fs: Option<String>
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct CopyItemsRequest {
     pub sources: Vec<String>,
+    pub source_file_system: Option<String>,
     pub destination: String,
+    pub destination_file_system: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct MoveItemsRequest {
     pub sources: Vec<String>,
+    pub source_file_system: Option<String>,
     pub destination: String,
+    pub destination_file_system: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct RenameItemRequest {
-    #[serde(rename = "oldPath")]
     pub old_path: String,
-    #[serde(rename = "newName")]
     pub new_name: String,
+    pub panel_fs: Option<String>
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteItemsRequest {
     pub paths: Vec<String>,
+    pub panel_fs: Option<String>
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct CopyItemsWithProgressRequest {
     pub sources: Vec<String>,
     pub destination: String,
-    #[serde(rename = "operationId")]
     pub operation_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct MoveItemsWithProgressRequest {
     pub sources: Vec<String>,
     pub destination: String,
-    #[serde(rename = "operationId")]
     pub operation_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct DeleteItemsWithProgressRequest {
     pub paths: Vec<String>,
-    #[serde(rename = "operationId")]
+    
     pub operation_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ReadFileContentQuery {
     pub path: String,
-    #[serde(rename = "maxSize")]
     pub max_size: Option<u64>,
+    pub panel_fs: Option<String>
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -139,14 +154,23 @@ pub struct ReadFileContentResponse {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct OpenFileRequest {
     pub path: String,
+    pub panel_fs: Option<String>
+}
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct GetHomeDirRequest {
+    pub panel_fs: Option<String>
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct WriteFileContentRequest {
     pub path: String,
     pub content: String,
+    pub panel_fs: Option<String>
 }
 
 // ===== Batch Operations =====

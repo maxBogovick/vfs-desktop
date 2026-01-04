@@ -8,8 +8,9 @@ import { useDragDrop } from '../composables/useDragDrop';
 import { useFileOperations } from '../composables/useFileOperations';
 import { useDialogs } from '../composables/useDialogs';
 import { useContextMenu } from '../composables/useContextMenu';
+import { useProgrammerMode } from '../composables/useProgrammerMode';
 import { registerActivePanelMethods, type ActivePanelMethods } from '../composables/useDualPanel';
-import type { Tab, ViewMode, ActivePanel, FileItem } from '../types';
+import type { Tab, ViewMode, ActivePanel, FileItem, FileSystemBackend } from '../types';
 
 interface Props {
   panelId: ActivePanel;
@@ -17,16 +18,21 @@ interface Props {
   tabs: Tab[];
   activeTabId?: number;
   viewMode: ViewMode;
+  panelFilesystem: FileSystemBackend;
 }
 
 interface Emits {
   (e: 'activate'): void;
   (e: 'update:tabs', tabs: Tab[]): void;
   (e: 'update:activeTabId', tabId: number | undefined): void;
+  (e: 'switchFilesystem', backend: FileSystemBackend): void;
 }
 
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
+
+// Programmer mode
+const { isProgrammerMode } = useProgrammerMode();
 
 // Sorting state
 const sortBy = ref<'name' | 'size' | 'modified' | 'type'>('name');
@@ -132,7 +138,7 @@ const getCurrentDirectoryPath = async (): Promise<string> => {
     pathString = '/' + pathString;
   }
   if (!pathString) {
-    return await getHomeDirectory();
+    return await getHomeDirectory(props.panelFilesystem);
   }
   return pathString;
 };
@@ -140,7 +146,7 @@ const getCurrentDirectoryPath = async (): Promise<string> => {
 // Function to refresh current directory
 const refreshCurrentDirectory = async () => {
   const pathString = await getCurrentDirectoryPath();
-  await loadDirectory(pathString);
+  await loadDirectory(pathString, props.panelFilesystem);
 };
 
 // File Operations
@@ -169,7 +175,7 @@ watch(() => props.tabs, (newTabs) => {
 // Watch current path and load directory
 watch(currentPath, async () => {
   const pathString = await getCurrentDirectoryPath();
-  await loadDirectory(pathString);
+  await loadDirectory(pathString, props.panelFilesystem);
   clearSelection();
   // Set focus on first element after loading
   if (files.value.length > 0) {
@@ -318,7 +324,7 @@ const handleItemDrop = async (item: FileItem, event: DragEvent) => {
   event.preventDefault();
   console.log('[FilePanel] Drop on item:', item.name);
 
-  await handleDrop(item, event, moveItems, copyItems);
+  await handleDrop(item, event, moveItems, copyItems, props.panelFilesystem);
   await refreshCurrentDirectory();
 };
 
@@ -343,7 +349,7 @@ const handleBackgroundDrop = async (event: DragEvent) => {
     permissions: { readable: true, writable: true, executable: true }
   };
 
-  await handleDrop(targetItem, event, moveItems, copyItems);
+  await handleDrop(targetItem, event, moveItems, copyItems, props.panelFilesystem);
   await refreshCurrentDirectory();
 };
 
@@ -517,6 +523,7 @@ watch(() => props.isActive, (isActive) => {
   if (isActive) {
     const methods: ActivePanelMethods = {
       getFiles: () => files.value,
+      getSelectedIds: () => selectedIds.value,
       getSelectedItems: () => getSelected(),
       selectAll: () => {
         files.value.forEach(file => selectedIds.value.add(file.id));
@@ -655,6 +662,8 @@ watch(() => props.isActive, (isActive) => {
         :sort-by="sortBy"
         :sort-order="sortOrder"
         :show-hidden="showHidden"
+        :is-programmer-mode="isProgrammerMode"
+        :panel-filesystem="panelFilesystem"
         @switch-tab="handleSwitchTab"
         @close-tab="handleCloseTab"
         @add-tab="handleAddTab"
@@ -664,6 +673,7 @@ watch(() => props.isActive, (isActive) => {
         @refresh="handleRefresh"
         @toggle-hidden="handleToggleHidden"
         @navigate-to-breadcrumb="handleNavigateToBreadcrumb"
+        @switch-filesystem="(backend) => emit('switchFilesystem', backend)"
     />
 
     <!-- File List -->

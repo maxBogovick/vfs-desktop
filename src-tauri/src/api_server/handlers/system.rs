@@ -23,8 +23,9 @@ use crate::api_service::{API, ApiError};
 )]
 pub async fn get_home_directory(
     State(_state): State<Arc<AppState>>,
+    Json(req): Json<GetHomeDirRequest>,
 ) -> impl IntoResponse {
-    match API.system.get_home_directory() {
+    match API.system.get_home_directory(req.panel_fs.as_deref()) {
         Ok(path) => Json(HomeDirectoryResponse { path }).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -35,8 +36,9 @@ pub async fn get_home_directory(
 
 pub async fn get_system_folders(
     State(_state): State<Arc<AppState>>,
+    Json(req): Json<GetHomeDirRequest>,
 ) -> impl IntoResponse {
-    match API.system.get_system_folders() {
+    match API.system.get_system_folders(req.panel_fs.as_deref()) {
         Ok(folders) => Json(SystemFoldersResponse { folders }).into_response(),
         Err(err) => (
             StatusCode::INTERNAL_SERVER_ERROR,

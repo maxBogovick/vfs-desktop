@@ -99,7 +99,26 @@ pub fn run() {
             // Template commands
             get_file_templates,
             suggest_file_extension,
-            get_template_content
+            get_template_content,
+            // Vault security commands
+            vault_is_enabled,
+            vault_get_status,
+            vault_initialize,
+            vault_unlock,
+            vault_lock,
+            // Vault recovery commands
+            vault_setup_recovery,
+            vault_request_password_reset,
+            vault_verify_reset_code,
+            vault_get_recovery_channels,
+            vault_is_recovery_configured,
+            vault_reset,
+            // Vault directory management commands
+            vault_get_current_directory,
+            vault_get_default_directory,
+            vault_select_directory,
+            vault_set_custom_directory,
+            vault_reset_to_default_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

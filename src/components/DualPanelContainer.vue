@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted, watch } from 'vue';
 import FilePanel from './FilePanel.vue';
 import { useDualPanel } from '../composables/useDualPanel';
-import type { ViewMode } from '../types';
+import { useProgrammerMode } from '../composables/useProgrammerMode';
+import { useVault } from '../composables/useVault';
+import { useDialogs } from '../composables/useDialogs';
+import type { ViewMode, FileSystemBackend } from '../types';
 
 interface Props {
   viewMode?: ViewMode;
@@ -17,11 +20,18 @@ const {
   activePanel,
   leftPanelTabs,
   leftPanelActiveTabId,
+  leftPanelFilesystem,
   rightPanelTabs,
   rightPanelActiveTabId,
+  rightPanelFilesystem,
   switchActivePanel,
+  switchPanelFilesystem,
   setPanelSplit,
 } = useDualPanel();
+
+const { isProgrammerMode } = useProgrammerMode();
+const vault = useVault();
+const { showConfirm } = useDialogs();
 
 // Resizer state
 const isResizing = ref(false);
@@ -65,6 +75,103 @@ const handleActivateLeft = () => {
 const handleActivateRight = () => {
   switchActivePanel('right');
 };
+
+// Handle filesystem switching
+const handleSwitchLeftFilesystem = async (backend: FileSystemBackend) => {
+  // 1. Проверка programmer mode
+  if (!isProgrammerMode.value) {
+    console.warn('FS switching is only available in programmer mode');
+    return;
+  }
+
+  // 2. Проверка vault unlock для Virtual FS
+  if (backend === 'virtual' && !vault.isUnlocked.value) {
+    vault.openVault();
+    
+    const unlocked = await new Promise<boolean>((resolve) => {
+       const stop = watch([() => vault.isUnlocked.value, () => vault.isVaultOverlayVisible.value], 
+       ([unlocked, visible]) => {
+          if (unlocked) {
+            stop();
+            resolve(true);
+          } else if (!visible) {
+             stop();
+             resolve(false);
+          }
+       });
+    });
+    
+    if (!unlocked) return;
+  }
+
+  // 3. Подтверждение пользователя
+  showConfirm(
+    'Switch filesystem?',
+    `All tabs will be closed. Switch to ${backend === 'virtual' ? 'Virtual' : 'Real'} filesystem?`,
+    () => {
+      // 4. Закрыть все табы и создать новый home таб
+      leftPanelTabs.value = [{
+        id: Date.now(),
+        path: [''],
+        name: 'Home',
+        history: [['']],
+        historyIndex: 0,
+      }];
+      leftPanelActiveTabId.value = leftPanelTabs.value[0].id;
+
+      // 5. Переключить FS
+      switchPanelFilesystem('left', backend);
+    }
+  );
+};
+
+const handleSwitchRightFilesystem = async (backend: FileSystemBackend) => {
+  // 1. Проверка programmer mode
+  if (!isProgrammerMode.value) {
+    console.warn('FS switching is only available in programmer mode');
+    return;
+  }
+
+  // 2. Проверка vault unlock для Virtual FS
+  if (backend === 'virtual' && !vault.isUnlocked.value) {
+    vault.openVault();
+    
+    const unlocked = await new Promise<boolean>((resolve) => {
+       const stop = watch([() => vault.isUnlocked.value, () => vault.isVaultOverlayVisible.value], 
+       ([unlocked, visible]) => {
+          if (unlocked) {
+            stop();
+            resolve(true);
+          } else if (!visible) {
+             stop();
+             resolve(false);
+          }
+       });
+    });
+    
+    if (!unlocked) return;
+  }
+
+  // 3. Подтверждение пользователя
+  showConfirm(
+    'Switch filesystem?',
+    `All tabs will be closed. Switch to ${backend === 'virtual' ? 'Virtual' : 'Real'} filesystem?`,
+    () => {
+      // 4. Закрыть все табы и создать новый home таб
+      rightPanelTabs.value = [{
+        id: Date.now(),
+        path: [],
+        name: 'Home',
+        history: [[]],
+        historyIndex: 0,
+      }];
+      rightPanelActiveTabId.value = rightPanelTabs.value[0].id;
+
+      // 5. Переключить FS
+      switchPanelFilesystem('right', backend);
+    }
+  );
+};
 </script>
 
 <template>
@@ -84,9 +191,11 @@ const handleActivateRight = () => {
         :tabs="leftPanelTabs"
         :active-tab-id="leftPanelActiveTabId"
         :view-mode="viewMode"
+        :panel-filesystem="leftPanelFilesystem"
         @activate="handleActivateLeft"
         @update:tabs="(tabs) => leftPanelTabs = tabs"
         @update:active-tab-id="(id) => leftPanelActiveTabId = id"
+        @switch-filesystem="handleSwitchLeftFilesystem"
       />
     </div>
 
@@ -108,9 +217,11 @@ const handleActivateRight = () => {
         :tabs="rightPanelTabs"
         :active-tab-id="rightPanelActiveTabId"
         :view-mode="viewMode"
+        :panel-filesystem="rightPanelFilesystem"
         @activate="handleActivateRight"
         @update:tabs="(tabs) => rightPanelTabs = tabs"
         @update:active-tab-id="(id) => rightPanelActiveTabId = id"
+        @switch-filesystem="handleSwitchRightFilesystem"
       />
     </div>
   </div>
