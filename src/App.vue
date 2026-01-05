@@ -383,9 +383,7 @@ const handleItemDoubleClick = (item: FileItem) => {
     if (editModeEnabled.value && isEditableFile) {
       handleEditFile(item);
     } else {
-      previewFile.value = item;
-      // Close dashboard when opening preview
-      showDashboard.value = false;
+      handlePreviewFile(item);
     }
   }
 };
@@ -957,6 +955,11 @@ const handleEditFile = (file: FileItem) => {
   showTextEditor.value = true;
 };
 
+const handlePreviewFile = (file: FileItem) => {
+  previewFile.value = file;
+  showDashboard.value = false;
+};
+
 const handleCloseEditor = () => {
   showTextEditor.value = false;
   editorFile.value = null;
@@ -1376,7 +1379,12 @@ onMounted(async () => {
       <!-- File panels (flex-1) -->
       <div class="flex-1 flex overflow-hidden">
         <!-- Dual Panel Mode -->
-        <DualPanelContainer v-if="isDualMode" :view-mode="viewMode" />
+        <DualPanelContainer
+          v-if="isDualMode"
+          :view-mode="viewMode"
+          @edit-file="handleEditFile"
+          @preview-file="handlePreviewFile"
+        />
 
         <!-- Single Panel Mode -->
         <template v-else>

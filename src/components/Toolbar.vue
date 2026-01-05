@@ -31,7 +31,7 @@ interface Emits {
   (e: 'switchTab', tabId: number): void;
   (e: 'closeTab', tabId: number): void;
   (e: 'addTab'): void;
-  (e: 'update:viewMode', mode: ViewMode): void;
+  (e: 'update:view-mode', mode: ViewMode): void;
   (e: 'openCommandPalette'): void;
   (e: 'toggleBookmark'): void;
   (e: 'toggleProgrammerMode'): void;
@@ -421,14 +421,14 @@ onUnmounted(() => {
       <!-- View Mode Buttons -->
       <div class="flex gap-0.5">
         <button
-          @click="emit('update:viewMode', 'list')"
+          @click="emit('update:view-mode', 'list')"
           :class="['w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] flex items-center justify-center', viewMode === 'list' ? 'bg-[var(--vf-surface-hover)]' : '']"
           title="List View"
         >
           ☰
         </button>
         <button
-          @click="emit('update:viewMode', 'grid')"
+          @click="emit('update:view-mode', 'grid')"
           :class="['w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] flex items-center justify-center', viewMode === 'grid' ? 'bg-[var(--vf-surface-hover)]' : '']"
           title="Grid View"
         >

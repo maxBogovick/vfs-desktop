@@ -5,15 +5,22 @@ import { useDualPanel } from '../composables/useDualPanel';
 import { useProgrammerMode } from '../composables/useProgrammerMode';
 import { useVault } from '../composables/useVault';
 import { useDialogs } from '../composables/useDialogs';
-import type { ViewMode, FileSystemBackend } from '../types';
+import type { ViewMode, FileSystemBackend, FileItem } from '../types';
 
 interface Props {
   viewMode?: ViewMode;
 }
 
+interface Emits {
+  (e: 'editFile', item: FileItem): void;
+  (e: 'previewFile', item: FileItem): void;
+}
+
 const props = withDefaults(defineProps<Props>(), {
   viewMode: 'grid',
 });
+
+const emit = defineEmits<Emits>();
 
 const {
   leftPanelWidthPercent,
@@ -190,12 +197,14 @@ const handleSwitchRightFilesystem = async (backend: FileSystemBackend) => {
         :is-active="activePanel === 'left'"
         :tabs="leftPanelTabs"
         :active-tab-id="leftPanelActiveTabId"
-        :view-mode="viewMode"
+        :view-mode="props.viewMode"
         :panel-filesystem="leftPanelFilesystem"
         @activate="handleActivateLeft"
         @update:tabs="(tabs) => leftPanelTabs = tabs"
         @update:active-tab-id="(id) => leftPanelActiveTabId = id"
         @switch-filesystem="handleSwitchLeftFilesystem"
+        @edit-file="(item) => emit('editFile', item)"
+        @preview-file="(item) => emit('previewFile', item)"
       />
     </div>
 
@@ -216,12 +225,14 @@ const handleSwitchRightFilesystem = async (backend: FileSystemBackend) => {
         :is-active="activePanel === 'right'"
         :tabs="rightPanelTabs"
         :active-tab-id="rightPanelActiveTabId"
-        :view-mode="viewMode"
+        :view-mode="props.viewMode"
         :panel-filesystem="rightPanelFilesystem"
         @activate="handleActivateRight"
         @update:tabs="(tabs) => rightPanelTabs = tabs"
         @update:active-tab-id="(id) => rightPanelActiveTabId = id"
         @switch-filesystem="handleSwitchRightFilesystem"
+        @edit-file="(item) => emit('editFile', item)"
+        @preview-file="(item) => emit('previewFile', item)"
       />
     </div>
   </div>

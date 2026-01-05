@@ -9,6 +9,7 @@ import { useFileOperations } from '../composables/useFileOperations';
 import { useDialogs } from '../composables/useDialogs';
 import { useContextMenu } from '../composables/useContextMenu';
 import { useProgrammerMode } from '../composables/useProgrammerMode';
+import { useUIState } from '../composables/useUIState';
 import { registerActivePanelMethods, type ActivePanelMethods } from '../composables/useDualPanel';
 import type { Tab, ViewMode, ActivePanel, FileItem, FileSystemBackend } from '../types';
 
@@ -26,6 +27,8 @@ interface Emits {
   (e: 'update:tabs', tabs: Tab[]): void;
   (e: 'update:activeTabId', tabId: number | undefined): void;
   (e: 'switchFilesystem', backend: FileSystemBackend): void;
+  (e: 'editFile', item: FileItem): void;
+  (e: 'previewFile', item: FileItem): void;
 }
 
 const props = defineProps<Props>();
@@ -33,6 +36,9 @@ const emit = defineEmits<Emits>();
 
 // Programmer mode
 const { isProgrammerMode } = useProgrammerMode();
+
+// UI State (Global)
+const { editModeEnabled } = useUIState();
 
 // Sorting state
 const sortBy = ref<'name' | 'size' | 'modified' | 'type'>('name');
@@ -224,7 +230,19 @@ const handleItemDoubleClick = (item: FileItem) => {
   if (item.type === 'folder' || item.type === 'drive' || item.type === 'system') {
     const pathParts = item.path.split('/').filter(p => p);
     updateTabPath(pathParts);
+  } else {
+    // Check if edit mode is enabled and file is text/code
+    const isEditableFile = item.type === 'file' || item.type === 'code';
+    if (editModeEnabled.value && isEditableFile) {
+      emit('editFile', item);
+    } else {
+      emit('previewFile', item);
+    }
   }
+};
+
+const handleToggleEditMode = () => {
+  editModeEnabled.value = !editModeEnabled.value;
 };
 
 // Handle item context menu
@@ -664,6 +682,7 @@ watch(() => props.isActive, (isActive) => {
         :show-hidden="showHidden"
         :is-programmer-mode="isProgrammerMode"
         :panel-filesystem="panelFilesystem"
+        :edit-mode-enabled="editModeEnabled"
         @switch-tab="handleSwitchTab"
         @close-tab="handleCloseTab"
         @add-tab="handleAddTab"
@@ -672,6 +691,7 @@ watch(() => props.isActive, (isActive) => {
         @invert-selection="handleInvertSelection"
         @refresh="handleRefresh"
         @toggle-hidden="handleToggleHidden"
+        @toggle-edit-mode="handleToggleEditMode"
         @navigate-to-breadcrumb="handleNavigateToBreadcrumb"
         @switch-filesystem="(backend) => emit('switchFilesystem', backend)"
     />
@@ -679,7 +699,7 @@ watch(() => props.isActive, (isActive) => {
     <!-- File List -->
     <FileList
         :items="sortedFiles"
-        :view-mode="viewMode"
+        :view-mode="props.viewMode"
         :selected-ids="selectedIds"
         :focused-id="focusedId"
         :is-loading="isLoading"
