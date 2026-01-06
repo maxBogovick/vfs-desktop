@@ -9,7 +9,7 @@ pub enum TextMatchMode {
 use regex::Regex;
 use crate::core::FileSystemEntry;
 use crate::core::search::specification::FileSpecification;
-
+use strsim::levenshtein;
 /// Спецификация для фильтрации по имени файла
 ///
 /// Поддерживает 4 режима поиска:
@@ -75,6 +75,7 @@ impl NameSpecification {
 }
 
 impl FileSpecification for NameSpecification {
+
     fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool  {
         match self.mode {
             TextMatchMode::Regex => {
@@ -88,6 +89,25 @@ impl FileSpecification for NameSpecification {
             TextMatchMode::Exact => {
                 item.name.to_lowercase().eq(&self.pattern)
             }
+            TextMatchMode::Fuzzy(max_distance) => {
+                // 🎯 ВАША ЗАДАЧА:
+                //
+                // 1. Приведите обе строки к lowercase для case-insensitive поиска
+                // 2. Вычислите расстояние: levenshtein(&pattern, &filename)
+                // 3. Верните true, если distance <= max_distance
+                //
+                // Подсказка:
+                // let pattern_lower = self.pattern.to_lowercase();
+                // let name_lower = item.name.to_lowercase();
+                // let distance = levenshtein(&pattern_lower, &name_lower);
+                // distance <= *max_distance
+                let pattern_lc = self.pattern.to_lowercase();
+                let name_lc = item.name.to_lowercase();
+                let d = levenshtein(&pattern_lc, &name_lc);
+                //if d.eq(&max_distance) { true } else { false }
+                d <= max_distance
+            }
+
             _ => false
         }
     }

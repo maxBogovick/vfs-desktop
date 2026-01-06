@@ -4672,6 +4672,7 @@ dependencies = [
  "regex",
  "serde",
  "serde_json",
+ "strsim",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
