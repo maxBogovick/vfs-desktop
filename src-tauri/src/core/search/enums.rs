@@ -77,6 +77,14 @@ impl NameSpecification {
 impl FileSpecification for NameSpecification {
     fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool  {
         match self.mode {
+            TextMatchMode::Regex => {
+                // 🎯 ВАША ЗАДАЧА:
+                // 1. Получите compiled_regex из self.compiled_regex
+                //    (используйте if let Some(regex) = ...)
+                // 2. Вызовите regex.is_match(&item.name)
+                // 3. Если regex = None, верните false (или panic! для безопасности)
+                if let Some(regex) = &self.compiled_regex { regex.is_match(&item.name) } else { panic!("Regex not compiled!"); }
+            }
             TextMatchMode::Exact => {
                 item.name.to_lowercase().eq(&self.pattern)
             }
