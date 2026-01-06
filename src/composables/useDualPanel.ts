@@ -24,6 +24,7 @@ export interface ActivePanelMethods {
   selectAll: () => void;
   clearSelection: () => void;
   handleCopy: () => void;
+  handleEditFile: () => void;
   handleCut: () => void;
   handlePaste: () => void;
   handleDelete: () => void;

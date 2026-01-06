@@ -51,7 +51,7 @@ import { useTerminal } from './composables/useTerminal';
 import { useTheme } from './composables/useTheme';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
-import type { FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange } from './types';
+import type {FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange, FileSystemBackend} from './types';
 
 // File System
 const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory, writeFileContent } = useFileSystem();
@@ -228,8 +228,6 @@ const handleToggleDashboard = () => {
 const handleBackgroundDrop = async (event: DragEvent) => {
   console.log('[App] Background Drop Detected!'); // DEBUG LOG
 
-  const { copyItems, moveItems } = useFileSystem();
-
   // Create a target representing the current directory
   const pathString = await getCurrentDirectoryPath();
   const targetItem: FileItem = {
@@ -244,7 +242,13 @@ const handleBackgroundDrop = async (event: DragEvent) => {
     permissions: { readable: true, writable: true, executable: true }
   };
 
-  await handleDrop(targetItem, event, moveItems, copyItems);
+  // Use wrappers to route through handleTransfer for conflict resolution
+  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
+  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
+
+  await handleDrop(targetItem, event, onMove, onCopy);
 };
 
 // Helper для получения текущей директории
@@ -309,6 +313,7 @@ const showBatchQueue = ref(false);
 const batchOperationFiles = ref<FileItem[]>([]);
 const showTextEditor = ref(false);
 const editorFile = ref<FileItem | null>(null);
+const editorFileFs = ref<string | undefined>(undefined);
 
 // Inline File Creator state
 const showInlineCreator = ref(false);
@@ -410,10 +415,14 @@ const handleItemDrop = async (item: FileItem, event: DragEvent) => {
   event.preventDefault();
   console.log('[App] Drop on item:', item.name);
 
-  const { copyItems, moveItems } = useFileSystem();
+  // Use wrappers to route through handleTransfer for conflict resolution
+  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
+  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
 
   // Используем handleDrop из composable
-  await handleDrop(item, event, moveItems, copyItems);
+  await handleDrop(item, event, onMove, onCopy);
 
   // Обновляем директорию после drop
   await refreshCurrentDirectory();
@@ -423,8 +432,6 @@ const handleItemDrop = async (item: FileItem, event: DragEvent) => {
 const handleSidebarDrop = async (targetPath: string, event: DragEvent) => {
   event.preventDefault();
   console.log('[App] Drop on sidebar path:', targetPath);
-
-  const { copyItems, moveItems } = useFileSystem();
 
   // Создаем временный FileItem для целевого пути
   const targetItem: FileItem = {
@@ -436,8 +443,14 @@ const handleSidebarDrop = async (targetPath: string, event: DragEvent) => {
     modified: '',
   };
 
+  // Use wrappers to route through handleTransfer for conflict resolution
+  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
+  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
+
   // Используем handleDrop из composable
-  await handleDrop(targetItem, event, moveItems, copyItems);
+  await handleDrop(targetItem, event, onMove, onCopy);
 
   // Обновляем директорию после drop
   await refreshCurrentDirectory();
@@ -950,8 +963,9 @@ useSwipeNavigation({
 });
 
 // Text editor handlers
-const handleEditFile = (file: FileItem) => {
+const handleEditFile = (file: FileItem, panelFs?: string) => {
   editorFile.value = file;
+  editorFileFs.value = panelFs;
   showTextEditor.value = true;
 };
 
@@ -963,6 +977,7 @@ const handlePreviewFile = (file: FileItem) => {
 const handleCloseEditor = () => {
   showTextEditor.value = false;
   editorFile.value = null;
+  editorFileFs.value = undefined;
 };
 
 const handleSaveFile = async (content: string) => {
@@ -971,12 +986,13 @@ const handleSaveFile = async (content: string) => {
   if (!editorFile.value) return;
 
   try {
-    await writeFileContent(editorFile.value.path, content);
+    await writeFileContent(editorFile.value.path, content, editorFileFs.value);
     // Invalidate cache for this file so next time it loads fresh content
-    invalidate(editorFile.value.path);
+    invalidate(editorFile.value.path, editorFileFs.value);
     success('File saved', `Saved: ${editorFile.value.name}`);
     showTextEditor.value = false;
     editorFile.value = null;
+    editorFileFs.value = undefined;
     // Refresh directory to show updated file
     await refreshCurrentDirectory();
   } catch (err) {
@@ -993,7 +1009,12 @@ const contextMenuHandlers = {
   },
   edit: () => {
     if (contextMenu.value?.item) {
-      handleEditFile(contextMenu.value.item);
+      if (isDualMode.value) {
+        const methods = getActivePanelMethods();
+        if (methods) methods.handleEditFile();
+      } else {
+        handleEditFile(contextMenu.value.item, );
+      }
     }
   },
   copy: () => {
@@ -1599,6 +1620,7 @@ onMounted(async () => {
     <!-- Text Editor -->
     <TextEditor
       :file="editorFile"
+      :panel-filesystem="editorFileFs"
       :is-open="showTextEditor"
       @close="handleCloseEditor"
       @save="handleSaveFile"

@@ -52,9 +52,12 @@ export function useFileContentCache() {
   };
 
   // Получить файл из кеша или загрузить
-  const getFileContent = async (path: string, maxSize?: number): Promise<string> => {
+  const getFileContent = async (path: string, maxSize?: number, panelFs?: string): Promise<string> => {
+    const fsKey = panelFs || 'real';
+    const cacheKey = `${fsKey}:${path}`;
+
     // Проверяем кеш
-    const cached = cache.value.get(path);
+    const cached = cache.value.get(cacheKey);
     if (cached) {
       // Обновляем timestamp для LRU
       cached.timestamp = Date.now();
@@ -62,17 +65,17 @@ export function useFileContentCache() {
     }
 
     // Загружаем файл
-    const content = await readFromFS(path, maxSize);
+    const content = await readFromFS(path, maxSize, panelFs);
 
     // Добавляем в кеш
     const entry: CacheEntry = {
-      path,
+      path: cacheKey,
       content,
       timestamp: Date.now(),
       size: content.length * 2, // Примерная оценка размера в памяти (UTF-16)
     };
 
-    cache.value.set(path, entry);
+    cache.value.set(cacheKey, entry);
 
     // Применяем лимиты
     enforceSizeLimit();
@@ -87,8 +90,10 @@ export function useFileContentCache() {
   };
 
   // Удалить конкретный файл из кеша
-  const invalidate = (path: string) => {
-    cache.value.delete(path);
+  const invalidate = (path: string, panelFs?: string) => {
+    const fsKey = panelFs || 'real';
+    const cacheKey = `${fsKey}:${path}`;
+    cache.value.delete(cacheKey);
   };
 
   // Получить статистику кеша

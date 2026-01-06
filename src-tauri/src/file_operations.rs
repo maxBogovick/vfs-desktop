@@ -1,5 +1,6 @@
 use crate::core::FileSystemError;
 use crate::progress::{emit_progress, ProgressTracker};
+use crate::api_service::API;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
@@ -30,20 +31,22 @@ fn check_pause_and_cancel<R: tauri::Runtime>(
     Ok(())
 }
 
-/// Вычисляет общий размер файлов/директорий
+/// Вычисляет общий размер файлов/директорий (только для Real FS пока)
 pub fn calculate_total_size(paths: &[String]) -> io::Result<(u64, u64)> {
     let mut total_bytes = 0u64;
     let mut total_items = 0u64;
 
     for path_str in paths {
         let path = Path::new(path_str);
-        if path.is_file() {
-            total_bytes += fs::metadata(path)?.len();
-            total_items += 1;
-        } else if path.is_dir() {
-            let (bytes, items) = calculate_dir_size(path)?;
-            total_bytes += bytes;
-            total_items += items;
+        if path.exists() {
+            if path.is_file() {
+                total_bytes += fs::metadata(path)?.len();
+                total_items += 1;
+            } else if path.is_dir() {
+                let (bytes, items) = calculate_dir_size(path)?;
+                total_bytes += bytes;
+                total_items += items;
+            }
         }
     }
 
@@ -72,19 +75,17 @@ fn calculate_dir_size(path: &Path) -> io::Result<(u64, u64)> {
     Ok((total_bytes, total_items))
 }
 
-/// Копирует файл с прогрессом
-pub fn copy_file_with_progress<R: tauri::Runtime>(
+/// Копирует файл с прогрессом (Real FS)
+pub fn copy_file_real_fs<R: tauri::Runtime>(
     src: &Path,
     dest: &Path,
     tracker: &Arc<ProgressTracker>,
     app: &AppHandle<R>,
 ) -> Result<(), FileSystemError> {
-    // Проверяем отмену
     if tracker.is_cancelled() {
         return Err(FileSystemError::new("Operation cancelled"));
     }
 
-    // Обновляем текущий файл
     tracker.update_current_file(Some(
         src.file_name()
             .and_then(|n| n.to_str())
@@ -101,7 +102,6 @@ pub fn copy_file_with_progress<R: tauri::Runtime>(
     let mut buffer = vec![0; BUFFER_SIZE];
 
     loop {
-        // Проверяем паузу и отмену
         check_pause_and_cancel(tracker, app)?;
 
         let bytes_read = source
@@ -117,29 +117,24 @@ pub fn copy_file_with_progress<R: tauri::Runtime>(
             .map_err(|e| FileSystemError::new(format!("Failed to write: {}", e)))?;
 
         tracker.add_bytes(bytes_read as u64);
-
-        // Отправляем обновление прогресса
         emit_progress(app, tracker);
     }
 
-    // Копируем метаданные (permissions, timestamps)
     if let Ok(metadata) = fs::metadata(src) {
         let _ = fs::set_permissions(dest, metadata.permissions());
     }
 
     tracker.add_item();
-
     Ok(())
 }
 
-/// Рекурсивно копирует директорию с прогрессом
-pub fn copy_dir_with_progress<R: tauri::Runtime>(
+/// Рекурсивно копирует директорию с прогрессом (Real FS)
+pub fn copy_dir_real_fs<R: tauri::Runtime>(
     src: &Path,
     dest: &Path,
     tracker: &Arc<ProgressTracker>,
     app: &AppHandle<R>,
 ) -> Result<(), FileSystemError> {
-    // Проверяем паузу и отмену
     check_pause_and_cancel(tracker, app)?;
 
     fs::create_dir_all(dest)
@@ -158,10 +153,62 @@ pub fn copy_dir_with_progress<R: tauri::Runtime>(
         let dest_path = dest.join(file_name);
 
         if path.is_dir() {
-            copy_dir_with_progress(&path, &dest_path, tracker, app)?;
+            copy_dir_real_fs(&path, &dest_path, tracker, app)?;
         } else {
-            copy_file_with_progress(&path, &dest_path, tracker, app)?;
+            copy_file_real_fs(&path, &dest_path, tracker, app)?;
         }
+    }
+
+    Ok(())
+}
+
+/// Helper for Cross-FS Copy
+fn copy_recursive_cross_fs<R: tauri::Runtime>(
+    source_path: &str,
+    dest_parent: &str,
+    tracker: &Arc<ProgressTracker>,
+    app: &AppHandle<R>,
+    source_fs: Option<&str>,
+    dest_fs: Option<&str>,
+) -> Result<(), FileSystemError> {
+    check_pause_and_cancel(tracker, app)?;
+
+    // Get info about source
+    let info = API.files.get_file_info(source_path, source_fs)
+        .map_err(|e| FileSystemError::new(e.to_string()))?;
+
+    let name = &info.name;
+    let dest_path_buf = Path::new(dest_parent).join(name);
+    let dest_path = dest_path_buf.to_string_lossy().to_string();
+
+    tracker.update_current_file(Some(name.clone()));
+
+    if info.is_dir {
+        // Create directory in destination
+        API.files.create_folder(dest_parent, name, dest_fs)
+            .map_err(|e| FileSystemError::new(format!("Failed to create folder: {}", e)))?;
+
+        // List contents
+        let entries = API.files.list_directory(source_path, source_fs)
+            .map_err(|e| FileSystemError::new(format!("Failed to list directory: {}", e)))?;
+
+        for entry in entries {
+            copy_recursive_cross_fs(&entry.path, &dest_path, tracker, app, source_fs, dest_fs)?;
+        }
+    } else {
+        // Read content (binary safe)
+        let content = API.files.read_file_bytes(source_path, source_fs)
+            .map_err(|e| FileSystemError::new(format!("Failed to read file content: {}", e)))?;
+
+        // Write content (binary safe) using write_file_bytes which expects full path
+        // We already constructed dest_path above as full path to destination file
+        API.files.write_file_bytes(&dest_path, &content, dest_fs)
+            .map_err(|e| FileSystemError::new(format!("Failed to write file: {}", e)))?;
+
+        // Update progress
+        tracker.add_bytes(content.len() as u64);
+        tracker.add_item();
+        emit_progress(app, tracker);
     }
 
     Ok(())
@@ -173,39 +220,38 @@ pub fn copy_items_with_progress<R: tauri::Runtime>(
     destination: &str,
     tracker: &Arc<ProgressTracker>,
     app: &AppHandle<R>,
+    source_fs: Option<String>,
+    dest_fs: Option<String>,
 ) -> Result<(), FileSystemError> {
-    let dest_path = PathBuf::from(destination);
+    let is_real_source = source_fs.is_none() || source_fs.as_deref() == Some("real");
+    let is_real_dest = dest_fs.is_none() || dest_fs.as_deref() == Some("real");
 
-    if !dest_path.exists() || !dest_path.is_dir() {
-        return Err(FileSystemError::new(format!(
-            "Destination is not a valid directory: {}",
-            destination
-        )));
-    }
-
-    for source in sources {
-        // Проверяем паузу и отмену
-        check_pause_and_cancel(tracker, app)?;
-
-        let source_path = PathBuf::from(source);
-
-        if !source_path.exists() {
-            return Err(FileSystemError::new(format!(
-                "Source does not exist: {}",
-                source
-            )));
+    if is_real_source && is_real_dest {
+        // Use optimized Real FS implementation
+        let dest_path = PathBuf::from(destination);
+        if !dest_path.exists() || !dest_path.is_dir() {
+            return Err(FileSystemError::new(format!("Destination is not a valid directory: {}", destination)));
         }
 
-        let file_name = source_path
-            .file_name()
-            .ok_or_else(|| FileSystemError::new("Could not get file name"))?;
+        for source in sources {
+            check_pause_and_cancel(tracker, app)?;
+            let source_path = PathBuf::from(source);
+            if !source_path.exists() {
+                return Err(FileSystemError::new(format!("Source does not exist: {}", source)));
+            }
+            let file_name = source_path.file_name().ok_or_else(|| FileSystemError::new("Could not get file name"))?;
+            let dest_file_path = dest_path.join(file_name);
 
-        let dest_file_path = dest_path.join(file_name);
-
-        if source_path.is_dir() {
-            copy_dir_with_progress(&source_path, &dest_file_path, tracker, app)?;
-        } else {
-            copy_file_with_progress(&source_path, &dest_file_path, tracker, app)?;
+            if source_path.is_dir() {
+                copy_dir_real_fs(&source_path, &dest_file_path, tracker, app)?;
+            } else {
+                copy_file_real_fs(&source_path, &dest_file_path, tracker, app)?;
+            }
+        }
+    } else {
+        // Cross-FS implementation
+        for source in sources {
+            copy_recursive_cross_fs(source, destination, tracker, app, source_fs.as_deref(), dest_fs.as_deref())?;
         }
     }
 
@@ -218,121 +264,61 @@ pub fn move_items_with_progress<R: tauri::Runtime>(
     destination: &str,
     tracker: &Arc<ProgressTracker>,
     app: &AppHandle<R>,
+    source_fs: Option<String>,
+    dest_fs: Option<String>,
 ) -> Result<(), FileSystemError> {
-    let dest_path = PathBuf::from(destination);
+    let is_real_source = source_fs.is_none() || source_fs.as_deref() == Some("real");
+    let is_real_dest = dest_fs.is_none() || dest_fs.as_deref() == Some("real");
 
-    if !dest_path.exists() || !dest_path.is_dir() {
-        return Err(FileSystemError::new(format!(
-            "Destination is not a valid directory: {}",
-            destination
-        )));
-    }
-
-    for source in sources {
-        // Проверяем паузу и отмену
-        check_pause_and_cancel(tracker, app)?;
-
-        let source_path = PathBuf::from(source);
-
-        if !source_path.exists() {
-            return Err(FileSystemError::new(format!(
-                "Source does not exist: {}",
-                source
-            )));
+    if is_real_source && is_real_dest {
+        // Real FS Move optimization
+        let dest_path = PathBuf::from(destination);
+        if !dest_path.exists() || !dest_path.is_dir() {
+            return Err(FileSystemError::new(format!("Destination is not a valid directory: {}", destination)));
         }
 
-        let file_name = source_path
-            .file_name()
-            .ok_or_else(|| FileSystemError::new("Could not get file name"))?;
+        for source in sources {
+            check_pause_and_cancel(tracker, app)?;
+            let source_path = PathBuf::from(source);
+            if !source_path.exists() {
+                return Err(FileSystemError::new(format!("Source does not exist: {}", source)));
+            }
+            let file_name = source_path.file_name().ok_or_else(|| FileSystemError::new("Could not get file name"))?;
+            let dest_file_path = dest_path.join(file_name);
 
-        let dest_file_path = dest_path.join(file_name);
+            tracker.update_current_file(Some(file_name.to_str().unwrap_or("").to_string()));
 
-        tracker.update_current_file(Some(file_name.to_str().unwrap_or("").to_string()));
-
-        // Пробуем простое переименование (быстрее, если на том же разделе)
-        if fs::rename(&source_path, &dest_file_path).is_ok() {
-            // Для переименования добавляем размер файла к прогрессу
-            if let Ok(metadata) = fs::metadata(&dest_file_path) {
-                if metadata.is_file() {
-                    tracker.add_bytes(metadata.len());
+            if fs::rename(&source_path, &dest_file_path).is_ok() {
+                if let Ok(metadata) = fs::metadata(&dest_file_path) {
+                    if metadata.is_file() {
+                        tracker.add_bytes(metadata.len());
+                    }
+                }
+                tracker.add_item();
+                emit_progress(app, tracker);
+            } else {
+                if source_path.is_dir() {
+                    copy_dir_real_fs(&source_path, &dest_file_path, tracker, app)?;
+                    fs::remove_dir_all(&source_path).map_err(|e| FileSystemError::new(format!("Failed to remove source directory: {}", e)))?;
+                } else {
+                    copy_file_real_fs(&source_path, &dest_file_path, tracker, app)?;
+                    fs::remove_file(&source_path).map_err(|e| FileSystemError::new(format!("Failed to remove source file: {}", e)))?;
                 }
             }
-            tracker.add_item();
-            emit_progress(app, tracker);
-        } else {
-            // Если не получилось переименовать, копируем и удаляем
-            if source_path.is_dir() {
-                copy_dir_with_progress(&source_path, &dest_file_path, tracker, app)?;
-                fs::remove_dir_all(&source_path).map_err(|e| {
-                    FileSystemError::new(format!("Failed to remove source directory: {}", e))
-                })?;
-            } else {
-                copy_file_with_progress(&source_path, &dest_file_path, tracker, app)?;
-                fs::remove_file(&source_path).map_err(|e| {
-                    FileSystemError::new(format!("Failed to remove source file: {}", e))
-                })?;
-            }
+        }
+    } else {
+        // Cross-FS Move: Copy then Delete
+        for source in sources {
+            check_pause_and_cancel(tracker, app)?;
+            
+            // 1. Copy
+            copy_recursive_cross_fs(source, destination, tracker, app, source_fs.as_deref(), dest_fs.as_deref())?;
+            
+            // 2. Delete source
+            API.files.delete_item(source, source_fs.as_deref())
+                .map_err(|e| FileSystemError::new(format!("Failed to delete source after move: {}", e)))?;
         }
     }
-
-    Ok(())
-}
-
-/// Удаляет файл с прогрессом
-fn delete_file_with_progress<R: tauri::Runtime>(
-    path: &Path,
-    tracker: &Arc<ProgressTracker>,
-    app: &AppHandle<R>,
-) -> Result<(), FileSystemError> {
-    // Проверяем паузу и отмену
-    check_pause_and_cancel(tracker, app)?;
-
-    tracker.update_current_file(Some(
-        path.file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("")
-            .to_string(),
-    ));
-
-    let metadata = fs::metadata(path)
-        .map_err(|e| FileSystemError::new(format!("Failed to read metadata: {}", e)))?;
-
-    fs::remove_file(path)
-        .map_err(|e| FileSystemError::new(format!("Failed to delete file: {}", e)))?;
-
-    tracker.add_bytes(metadata.len());
-    tracker.add_item();
-    emit_progress(app, tracker);
-
-    Ok(())
-}
-
-/// Рекурсивно удаляет директорию с прогрессом
-fn delete_dir_with_progress<R: tauri::Runtime>(
-    path: &Path,
-    tracker: &Arc<ProgressTracker>,
-    app: &AppHandle<R>,
-) -> Result<(), FileSystemError> {
-    // Проверяем паузу и отмену
-    check_pause_and_cancel(tracker, app)?;
-
-    for entry in fs::read_dir(path)
-        .map_err(|e| FileSystemError::new(format!("Failed to read directory: {}", e)))?
-    {
-        let entry = entry
-            .map_err(|e| FileSystemError::new(format!("Failed to read entry: {}", e)))?;
-
-        let entry_path = entry.path();
-
-        if entry_path.is_dir() {
-            delete_dir_with_progress(&entry_path, tracker, app)?;
-        } else {
-            delete_file_with_progress(&entry_path, tracker, app)?;
-        }
-    }
-
-    fs::remove_dir(path)
-        .map_err(|e| FileSystemError::new(format!("Failed to delete directory: {}", e)))?;
 
     Ok(())
 }
@@ -342,26 +328,77 @@ pub fn delete_items_with_progress<R: tauri::Runtime>(
     paths: &[String],
     tracker: &Arc<ProgressTracker>,
     app: &AppHandle<R>,
+    panel_fs: Option<String>,
 ) -> Result<(), FileSystemError> {
-    for path_str in paths {
-        // Проверяем паузу и отмену
-        check_pause_and_cancel(tracker, app)?;
+    let is_real_fs = panel_fs.is_none() || panel_fs.as_deref() == Some("real");
 
-        let path = PathBuf::from(path_str);
-
-        if !path.exists() {
-            return Err(FileSystemError::new(format!(
-                "Path does not exist: {}",
-                path_str
-            )));
+    if is_real_fs {
+        for path_str in paths {
+            check_pause_and_cancel(tracker, app)?;
+            let path = PathBuf::from(path_str);
+            if !path.exists() {
+                return Err(FileSystemError::new(format!("Path does not exist: {}", path_str)));
+            }
+            if path.is_dir() {
+                delete_dir_real_fs(&path, tracker, app)?;
+            } else {
+                delete_file_real_fs(&path, tracker, app)?;
+            }
         }
-
-        if path.is_dir() {
-            delete_dir_with_progress(&path, tracker, app)?;
-        } else {
-            delete_file_with_progress(&path, tracker, app)?;
+    } else {
+        // Virtual FS Delete
+        for path in paths {
+            check_pause_and_cancel(tracker, app)?;
+            tracker.update_current_file(Some(path.clone()));
+            
+            // Note: API.files.delete_item is usually recursive.
+            // We might not get granular progress here unless we recurse manually.
+            // For now, we trust delete_item.
+            API.files.delete_item(path, panel_fs.as_deref())
+                .map_err(|e| FileSystemError::new(format!("Failed to delete item: {}", e)))?;
+            
+            tracker.add_item();
+            emit_progress(app, tracker);
         }
     }
 
+    Ok(())
+}
+
+fn delete_file_real_fs<R: tauri::Runtime>(
+    path: &Path,
+    tracker: &Arc<ProgressTracker>,
+    app: &AppHandle<R>,
+) -> Result<(), FileSystemError> {
+    check_pause_and_cancel(tracker, app)?;
+    tracker.update_current_file(Some(path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string()));
+    
+    let len = fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+    fs::remove_file(path).map_err(|e| FileSystemError::new(format!("Failed to delete file: {}", e)))?;
+    
+    tracker.add_bytes(len);
+    tracker.add_item();
+    emit_progress(app, tracker);
+    Ok(())
+}
+
+fn delete_dir_real_fs<R: tauri::Runtime>(
+    path: &Path,
+    tracker: &Arc<ProgressTracker>,
+    app: &AppHandle<R>,
+) -> Result<(), FileSystemError> {
+    check_pause_and_cancel(tracker, app)?;
+    
+    for entry in fs::read_dir(path).map_err(|e| FileSystemError::new(format!("Failed to read dir: {}", e)))? {
+        let entry = entry.map_err(|e| FileSystemError::new(format!("Failed to read entry: {}", e)))?;
+        let entry_path = entry.path();
+        if entry_path.is_dir() {
+            delete_dir_real_fs(&entry_path, tracker, app)?;
+        } else {
+            delete_file_real_fs(&entry_path, tracker, app)?;
+        }
+    }
+    
+    fs::remove_dir(path).map_err(|e| FileSystemError::new(format!("Failed to delete dir: {}", e)))?;
     Ok(())
 }

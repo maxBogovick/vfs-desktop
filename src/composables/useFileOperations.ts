@@ -16,6 +16,7 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     createFilesBatch,
     openFile: openFileInApp,
     revealInFinder,
+    getHomeDirectory,
   } = useFileSystem();
 
   const {
@@ -26,6 +27,9 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
 
   const {
     hasClipboardItems,
+    clipboardItems,
+    operation,
+    sourceFilesystem,
     copy: copyToClipboard,
     cut: cutToClipboard,
   } = useClipboard();
@@ -35,17 +39,17 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
   const { getTemplateContent } = useTemplates();
 
   // Функция для обновления текущей директории
-  const refreshDirectory = async (currentPath: string[]) => {
+  const refreshDirectory = async (currentPath: string[], panelFs?: string) => {
     if (refreshCallback) {
       await refreshCallback();
     } else {
-      const currentDir = await getCurrentDirectory(currentPath);
-      await loadDirectory(currentDir);
+      const currentDir = await getCurrentDirectory(currentPath, panelFs);
+      await loadDirectory(currentDir, panelFs);
     }
   };
 
   // Helper to get current directory path with proper leading slash
-  const getCurrentDirectory = async (currentPath: string[]): Promise<string> => {
+  const getCurrentDirectory = async (currentPath: string[], panelFs?: string): Promise<string> => {
     let pathString = currentPath.join('/');
 
     // Add leading slash if path is not empty and doesn't start with slash
@@ -54,47 +58,43 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     }
 
     if (!pathString) {
-      const { getHomeDirectory } = useFileSystem();
-      return await getHomeDirectory();
+      return await getHomeDirectory(panelFs);
     }
 
     return pathString;
   };
 
   // Copy selected items to clipboard
-  const handleCopy = (selectedItems: FileItem[]) => {
+  const handleCopy = (selectedItems: FileItem[], panelFs?: string) => {
     if (selectedItems.length > 0) {
-      copyToClipboard(selectedItems);
+      copyToClipboard(selectedItems, panelFs);
       success('Copied', `${selectedItems.length} item(s) copied to clipboard`);
     }
   };
 
   // Cut selected items to clipboard
-  const handleCut = (selectedItems: FileItem[]) => {
+  const handleCut = (selectedItems: FileItem[], panelFs?: string) => {
     if (selectedItems.length > 0) {
-      cutToClipboard(selectedItems);
+      cutToClipboard(selectedItems, panelFs);
       warning('Cut', `${selectedItems.length} item(s) cut to clipboard`);
     }
   };
 
-  // Paste items from clipboard with conflict resolution
-  const handlePaste = async (currentPath: string[]) => {
-    if (!hasClipboardItems.value) {
-      warning('Nothing to paste', 'Clipboard is empty');
-      return;
-    }
-
+  // Generic handler for file transfer (copy/move) with conflict resolution
+  const handleTransfer = async (
+    sources: string[],
+    destinationPath: string,
+    operationType: 'copy' | 'move',
+    sourceFs?: string,
+    destFs?: string
+  ) => {
     const {
       checkConflict,
       requestConflictResolution,
       resetSavedResolution,
     } = useConflictResolution();
 
-    const { clipboardItems, operation } = useClipboard();
-
     try {
-      const currentDir = await getCurrentDirectory(currentPath);
-
       // Reset any saved "apply to all" resolution from previous operations
       resetSavedResolution();
 
@@ -108,8 +108,8 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
 
       const itemsToSkip: string[] = [];
 
-      for (const item of clipboardItems.value) {
-        const conflict = await checkConflict(item.path, currentDir);
+      for (const sourcePath of sources) {
+        const conflict = await checkConflict(sourcePath, destinationPath, sourceFs, destFs);
 
         if (conflict) {
           // File exists, ask user what to do
@@ -117,32 +117,31 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
             const resolution = await requestConflictResolution(conflict);
 
             if (resolution.action === 'skip') {
-              itemsToSkip.push(item.path);
+              itemsToSkip.push(sourcePath);
               continue;
             }
 
             if (resolution.action === 'replace') {
               // Just copy/move normally, will overwrite
               itemsToProcess.push({
-                sourcePath: item.path,
-                targetPath: currentDir,
-                action: operation.value === 'copy' ? 'copy' : 'move',
+                sourcePath: sourcePath,
+                targetPath: destinationPath,
+                action: operationType,
                 newName: undefined,
               });
             } else if (resolution.action === 'rename') {
               // Copy/move with new name
               if (resolution.newName) {
                 // For rename, we always use copy_file_with_custom_name
-                // and then delete source if operation is 'cut'
+                // and then delete source if operation is 'move'
                 itemsToProcess.push({
-                  sourcePath: item.path,
-                  targetPath: currentDir,
+                  sourcePath: sourcePath,
+                  targetPath: destinationPath,
                   action: 'rename',
                   newName: resolution.newName,
                 });
               }
             }
-            // 'compare' action is not implemented yet
           } catch (err) {
             // User cancelled conflict resolution
             warning('Operation cancelled', 'File operation was cancelled');
@@ -152,9 +151,9 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
         } else {
           // No conflict, proceed normally
           itemsToProcess.push({
-            sourcePath: item.path,
-            targetPath: item.path,
-            action: operation.value === 'copy' ? 'copy' : 'move',
+            sourcePath: sourcePath,
+            targetPath: destinationPath, // Target directory
+            action: operationType,
             newName: undefined,
           });
         }
@@ -162,7 +161,9 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
 
       // Now perform the operations
       if (itemsToProcess.length === 0) {
-        warning('No files to paste', 'All files were skipped');
+        if (itemsToSkip.length > 0) {
+           warning('No files transferred', 'All files were skipped');
+        }
         resetSavedResolution();
         return;
       }
@@ -178,11 +179,11 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
         .filter(i => i.action === 'rename');
 
       if (sourcesToCopy.length > 0) {
-        await copyItemsWithProgress(sourcesToCopy, currentDir);
+        await copyItemsWithProgress(sourcesToCopy, destinationPath, sourceFs, destFs);
       }
 
       if (sourcesToMove.length > 0) {
-        await moveItemsWithProgress(sourcesToMove, currentDir);
+        await moveItemsWithProgress(sourcesToMove, destinationPath, sourceFs, destFs);
       }
 
       // Handle rename actions separately (copy with custom name)
@@ -194,11 +195,13 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
             sourcePath: item.sourcePath,
             destinationDir: item.targetPath,
             newName: item.newName,
+            sourceFileSystem: sourceFs || null,
+            destinationFileSystem: destFs || null,
           });
 
-          // If original operation was 'cut', delete the source file
-          if (operation.value === 'cut') {
-            await deleteItemsWithProgress([item.sourcePath]);
+          // If original operation was 'move', delete the source file
+          if (operationType === 'move') {
+            await deleteItemsWithProgress([item.sourcePath], sourceFs);
           }
         }
       }
@@ -210,20 +213,58 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
       if (skippedCount > 0) {
         warning(
           'Some files skipped',
-          `${processedCount} file(s) pasted, ${skippedCount} skipped`
+          `${processedCount} file(s) transferred, ${skippedCount} skipped`
         );
       } else {
-        success('Pasted', `${processedCount} file(s) pasted successfully`);
+        success('Transfer complete', `${processedCount} file(s) transferred successfully`);
       }
 
-      // Refresh directory after paste
-      await refreshDirectory(currentPath);
+      // Refresh directory after transfer
+      // We assume destination is currentPath if this is drag & drop to current view
+      // But handleTransfer receives destinationPath string.
+      // We can try to refresh if it matches current context, or caller handles refresh.
+      // But useFileOperations has `refreshDirectory`.
+      // If we are in FilePanel, we might need to refresh that panel.
+      // For now, we will just call refreshDirectory if destinationPath matches currentPath logic?
+      // Actually, handlePaste calls refreshDirectory.
+      // Here we can't easily know if destinationPath == currentPath array.
+      // We will leave refresh to the caller or try to refresh if possible.
+      // BUT `handlePaste` refreshes.
+      
+      // Let's return true/false or something to indicate success so caller can refresh?
+      // Or just call refreshCallback if defined?
+      if (refreshCallback) {
+          await refreshCallback();
+      }
 
       // Reset saved resolution
       resetSavedResolution();
     } catch (err) {
-      showError('Paste failed', err instanceof Error ? err.message : 'Unknown error');
+      showError('Transfer failed', err instanceof Error ? err.message : 'Unknown error');
       resetSavedResolution();
+    }
+  };
+
+  // Paste items from clipboard with conflict resolution
+  const handlePaste = async (currentPath: string[], panelFs?: string) => {
+    if (!hasClipboardItems.value) {
+      warning('Nothing to paste', 'Clipboard is empty');
+      return;
+    }
+
+    try {
+      const currentDir = await getCurrentDirectory(currentPath, panelFs);
+      const destinationFs = panelFs;
+      const sourceFs = sourceFilesystem.value;
+      const sources = clipboardItems.value.map(i => i.path);
+      const opType = operation.value === 'cut' ? 'move' : 'copy';
+
+      await handleTransfer(sources, currentDir, opType, sourceFs, destinationFs);
+      
+      // Refresh directory
+      await refreshDirectory(currentPath, panelFs);
+    } catch (err) {
+      showError('Paste failed', err instanceof Error ? err.message : 'Unknown error');
     }
   };
 
@@ -232,7 +273,8 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     selectedItems: FileItem[],
     currentPath: string[],
     clearSelection: () => void,
-    showConfirm: (title: string, message: string, onConfirm: () => void, type?: 'warning' | 'danger' | 'info') => void
+    showConfirm: (title: string, message: string, onConfirm: () => void, type?: 'warning' | 'danger' | 'info') => void,
+    panelFs?: string
   ) => {
     if (selectedItems.length === 0) return;
 
@@ -242,11 +284,11 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
       async () => {
         try {
           const paths = selectedItems.map(item => item.path);
-          await deleteItemsWithProgress(paths);
+          await deleteItemsWithProgress(paths, panelFs);
           // Инвалидируем кеш для удаленных файлов
           selectedItems.forEach(item => invalidateCache(item.path));
           // Refresh directory
-          await refreshDirectory(currentPath);
+          await refreshDirectory(currentPath, panelFs);
           clearSelection();
         } catch (err) {
           showError('Delete failed', err instanceof Error ? err.message : 'Unknown error');
@@ -260,7 +302,8 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
   const handleRename = (
     selectedItems: FileItem[],
     currentPath: string[],
-    showInput: (title: string, label: string, onConfirm: (value: string) => void, defaultValue?: string, placeholder?: string) => void
+    showInput: (title: string, label: string, onConfirm: (value: string) => void, defaultValue?: string, placeholder?: string) => void,
+    panelFs?: string
   ) => {
     if (selectedItems.length !== 1) {
       warning('Invalid selection', 'Please select exactly one item to rename');
@@ -278,11 +321,11 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
         }
 
         try {
-          await renameItem(item.path, newName);
+          await renameItem(item.path, newName, panelFs);
           // Инвалидируем кеш для старого пути
           invalidateCache(item.path);
           // Refresh directory
-          await refreshDirectory(currentPath);
+          await refreshDirectory(currentPath, panelFs);
           success('Renamed', `Renamed to ${newName}`);
         } catch (err) {
           showError('Rename failed', err instanceof Error ? err.message : 'Unknown error');
@@ -296,7 +339,8 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
   // Create new folder
   const handleNewFolder = (
     currentPath: string[],
-    showInput: (title: string, label: string, onConfirm: (value: string) => void, defaultValue?: string, placeholder?: string) => void
+    showInput: (title: string, label: string, onConfirm: (value: string) => void, defaultValue?: string, placeholder?: string) => void,
+    panelFs?: string
   ) => {
     showInput(
       'New Folder',
@@ -307,10 +351,10 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
         }
 
         try {
-          const currentDir = await getCurrentDirectory(currentPath);
-          await createFolder(currentDir, name);
+          const currentDir = await getCurrentDirectory(currentPath, panelFs);
+          await createFolder(currentDir, name, panelFs);
           // Refresh directory
-          await refreshDirectory(currentPath);
+          await refreshDirectory(currentPath, panelFs);
           success('Folder created', `Created ${name}`);
         } catch (err) {
           showError('Create folder failed', err instanceof Error ? err.message : 'Unknown error');
@@ -325,7 +369,8 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
   const handleNewFile = async (
     currentPath: string[],
     name: string,
-    templateId?: string
+    templateId?: string,
+    panelFs?: string
   ) => {
     if (!name) {
       warning('Invalid name', 'File name cannot be empty');
@@ -333,7 +378,7 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     }
 
     try {
-      const currentDir = await getCurrentDirectory(currentPath);
+      const currentDir = await getCurrentDirectory(currentPath, panelFs);
 
       // Get template content if templateId is provided
       let content: string | undefined;
@@ -341,10 +386,10 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
         content = await getTemplateContent(templateId);
       }
 
-      await createFile(currentDir, name, content);
+      await createFile(currentDir, name, content, panelFs);
 
       // Refresh directory
-      await refreshDirectory(currentPath);
+      await refreshDirectory(currentPath, panelFs);
       success('File created', `Created ${name}`);
     } catch (err) {
       showError('Create file failed', err instanceof Error ? err.message : 'Unknown error');
@@ -355,7 +400,8 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
   // Batch create files
   const handleBatchCreate = async (
     currentPath: string[],
-    files: Array<{ name: string; content?: string; templateId?: string }>
+    files: Array<{ name: string; content?: string; templateId?: string }>,
+    panelFs?: string
   ) => {
     if (files.length === 0) {
       warning('No files', 'No files to create');
@@ -363,7 +409,7 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     }
 
     try {
-      const currentDir = await getCurrentDirectory(currentPath);
+      const currentDir = await getCurrentDirectory(currentPath, panelFs);
 
       // Prepare files with template content if needed
       const filesWithContent = await Promise.all(
@@ -382,10 +428,10 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
         })
       );
 
-      const result = await createFilesBatch(currentDir, filesWithContent);
+      const result = await createFilesBatch(currentDir, filesWithContent, panelFs);
 
       // Refresh directory
-      await refreshDirectory(currentPath);
+      await refreshDirectory(currentPath, panelFs);
 
       // Show result
       if (result.failed && result.failed.length > 0) {
@@ -405,9 +451,9 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
   };
 
   // Open file in default application
-  const handleOpenFile = async (file: FileItem) => {
+  const handleOpenFile = async (file: FileItem, panelFs?: string) => {
     try {
-      await openFileInApp(file.path);
+      await openFileInApp(file.path, panelFs);
       success('File opened', `${file.name} opened successfully`);
     } catch (err) {
       showError('Failed to open file', err instanceof Error ? err.message : 'Unknown error');
@@ -428,20 +474,20 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
   };
 
   // Reveal in Finder
-  const handleRevealInFinder = async (selectedItems: FileItem[]) => {
+  const handleRevealInFinder = async (selectedItems: FileItem[], panelFs?: string) => {
     if (selectedItems.length !== 1) return;
 
     try {
-      await revealInFinder(selectedItems[0].path);
+      await revealInFinder(selectedItems[0].path, panelFs);
     } catch (err) {
       showError('Failed to reveal', err instanceof Error ? err.message : 'Unknown error');
     }
   };
 
   // Refresh directory
-  const handleRefresh = async (currentPath: string[]) => {
+  const handleRefresh = async (currentPath: string[], panelFs?: string) => {
     try {
-      await refreshDirectory(currentPath);
+      await refreshDirectory(currentPath, panelFs);
       success('Refreshed', 'Directory refreshed');
     } catch (err) {
       showError('Refresh failed', err instanceof Error ? err.message : 'Unknown error');

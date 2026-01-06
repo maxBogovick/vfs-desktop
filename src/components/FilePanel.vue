@@ -27,8 +27,8 @@ interface Emits {
   (e: 'update:tabs', tabs: Tab[]): void;
   (e: 'update:activeTabId', tabId: number | undefined): void;
   (e: 'switchFilesystem', backend: FileSystemBackend): void;
-  (e: 'editFile', item: FileItem): void;
-  (e: 'previewFile', item: FileItem): void;
+  (e: 'editFile', item: FileItem, panelFs?: string): void;
+  (e: 'previewFile', item: FileItem, panelFs?: string): void;
 }
 
 const props = defineProps<Props>();
@@ -234,9 +234,9 @@ const handleItemDoubleClick = (item: FileItem) => {
     // Check if edit mode is enabled and file is text/code
     const isEditableFile = item.type === 'file' || item.type === 'code';
     if (editModeEnabled.value && isEditableFile) {
-      emit('editFile', item);
+      emit('editFile', item, props.panelFilesystem);
     } else {
-      emit('previewFile', item);
+      emit('previewFile', item, props.panelFilesystem);
     }
   }
 };
@@ -329,7 +329,7 @@ const handleDragStart = (item: FileItem, event: DragEvent) => {
       : [item];
 
   console.log('[FilePanel] Starting drag with items:', itemsToDrag.length, itemsToDrag.map(i => i.name));
-  startDrag(itemsToDrag, event);
+  startDrag(itemsToDrag, event, props.panelFilesystem);
 };
 
 // Handle item drop
@@ -342,7 +342,13 @@ const handleItemDrop = async (item: FileItem, event: DragEvent) => {
   event.preventDefault();
   console.log('[FilePanel] Drop on item:', item.name);
 
-  await handleDrop(item, event, moveItems, copyItems, props.panelFilesystem);
+  // Use wrappers to route through handleTransfer for conflict resolution
+  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
+  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
+
+  await handleDrop(item, event, onMove, onCopy, props.panelFilesystem);
   await refreshCurrentDirectory();
 };
 
@@ -367,7 +373,13 @@ const handleBackgroundDrop = async (event: DragEvent) => {
     permissions: { readable: true, writable: true, executable: true }
   };
 
-  await handleDrop(targetItem, event, moveItems, copyItems, props.panelFilesystem);
+  // Use wrappers to route through handleTransfer for conflict resolution
+  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
+  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
+
+  await handleDrop(targetItem, event, onMove, onCopy, props.panelFilesystem);
   await refreshCurrentDirectory();
 };
 
@@ -394,7 +406,7 @@ const handleCopyItem = (item: FileItem) => {
   if (!props.isActive) {
     emit('activate');
   }
-  fileOps.handleCopy([item]);
+  fileOps.handleCopy([item], props.panelFilesystem);
 };
 
 const handleCutItem = (item: FileItem) => {
@@ -402,7 +414,7 @@ const handleCutItem = (item: FileItem) => {
   if (!props.isActive) {
     emit('activate');
   }
-  fileOps.handleCut([item]);
+  fileOps.handleCut([item], props.panelFilesystem);
 };
 
 const handleDeleteItem = (item: FileItem) => {
@@ -410,7 +422,7 @@ const handleDeleteItem = (item: FileItem) => {
   if (!props.isActive) {
     emit('activate');
   }
-  fileOps.handleDelete([item], currentPath.value, clearSelection, showConfirm);
+  fileOps.handleDelete([item], currentPath.value, clearSelection, showConfirm, props.panelFilesystem);
 };
 
 const handleRenameItem = (item: FileItem) => {
@@ -418,7 +430,7 @@ const handleRenameItem = (item: FileItem) => {
   if (!props.isActive) {
     emit('activate');
   }
-  fileOps.handleRename([item], currentPath.value, showInput);
+  fileOps.handleRename([item], currentPath.value, showInput, props.panelFilesystem);
 };
 
 // Handle file creation from inline creator
@@ -433,11 +445,11 @@ const handleCreateFile = async (payload: { name: string; isFolder: boolean; temp
     const pathString = await getCurrentDirectoryPath();
 
     if (payload.isFolder) {
-      await createFolder(pathString, payload.name);
+      await createFolder(pathString, payload.name, props.panelFilesystem);
     } else {
       const { getTemplateContent } = await import('../composables/useTemplates').then(m => m.useTemplates());
       const content = payload.templateId ? await getTemplateContent(payload.templateId) : undefined;
-      await createFile(pathString, payload.name, content);
+      await createFile(pathString, payload.name, content, props.panelFilesystem);
     }
 
     await refreshCurrentDirectory();
@@ -456,7 +468,7 @@ const handleBatchCreateFiles = async (names: string[]) => {
 
   try {
     const files = names.map(name => ({ name }));
-    await fileOps.handleBatchCreate(currentPath.value, files);
+    await fileOps.handleBatchCreate(currentPath.value, files, props.panelFilesystem);
     showInlineCreator.value = false;
   } catch (err) {
     console.error('Failed to batch create files:', err);
@@ -547,13 +559,21 @@ watch(() => props.isActive, (isActive) => {
         files.value.forEach(file => selectedIds.value.add(file.id));
       },
       clearSelection,
-      handleCopy: () => fileOps.handleCopy(getSelected()),
-      handleCut: () => fileOps.handleCut(getSelected()),
-      handlePaste: () => fileOps.handlePaste(currentPath.value),
-      handleDelete: () => fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm),
-      handleRename: () => fileOps.handleRename(getSelected(), currentPath.value, showInput),
-      handleRefresh: () => fileOps.handleRefresh(currentPath.value),
-      handleNewFolder: () => fileOps.handleNewFolder(currentPath.value, showInput),
+      handleCopy: () => fileOps.handleCopy(getSelected(), props.panelFilesystem),
+      handleEditFile: () => {
+        const item = getSelectedItems(files.value)[0];
+        console.log('handleEditFile', item)
+        console.log('props.panelFilesystem', props.panelFilesystem)
+        if (item) {
+          emit('editFile', item, props.panelFilesystem);
+        }
+      },
+      handleCut: () => fileOps.handleCut(getSelected(), props.panelFilesystem),
+      handlePaste: () => fileOps.handlePaste(currentPath.value, props.panelFilesystem),
+      handleDelete: () => fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm, props.panelFilesystem),
+      handleRename: () => fileOps.handleRename(getSelected(), currentPath.value, showInput, props.panelFilesystem),
+      handleRefresh: () => fileOps.handleRefresh(currentPath.value, props.panelFilesystem),
+      handleNewFolder: () => fileOps.handleNewFolder(currentPath.value, showInput, props.panelFilesystem),
       handleNewFile: () => {
         inlineCreatorMode.value = 'file';
         showInlineCreator.value = true;
@@ -599,7 +619,7 @@ watch(() => props.isActive, (isActive) => {
             ...tab,
             historyIndex: tab.historyIndex + 1,
             path: tab.history[tab.historyIndex + 1],
-            name: tab.history[tab.historyIndex + 1][tab.history[tab.historyIndex + 1].length - 1] || 'Home',
+            name: tab.history[tab.historyIndex + 1][tab.history[tab.historyIndex - 1].length - 1] || 'Home',
           };
           emit('update:tabs', updatedTabs);
         }

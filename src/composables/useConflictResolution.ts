@@ -108,7 +108,9 @@ export function useConflictResolution() {
   // Check if file exists and get metadata
   const checkConflict = async (
     sourcePath: string,
-    destinationDir: string
+    destinationDir: string,
+    sourceFileSystem?: string,
+    destinationFileSystem?: string
   ): Promise<FileConflict | null> => {
     try {
       const { invoke } = await import('@tauri-apps/api/core');
@@ -128,6 +130,8 @@ export function useConflictResolution() {
       } | null>('check_file_conflict', {
         sourcePath,
         destinationDir,
+        sourceFileSystem: sourceFileSystem || null,
+        destinationFileSystem: destinationFileSystem || null,
       });
 
       if (!result) {

@@ -528,6 +528,27 @@ impl FileSystem for RealFileSystem {
         }
     }
 
+    fn read_file_bytes(&self, path: &str) -> FileSystemResult<Vec<u8>> {
+        let file_path = PathBuf::from(path);
+
+        if !file_path.exists() {
+            return Err(FileSystemError::new(format!(
+                "File does not exist: {}",
+                path
+            )));
+        }
+
+        if !file_path.is_file() {
+            return Err(FileSystemError::new(format!(
+                "Path is not a file: {}",
+                path
+            )));
+        }
+
+        fs::read(&file_path)
+            .map_err(|e| FileSystemError::new(format!("Failed to read file: {}", e)))
+    }
+
     fn write_file_content(&self, path: &str, content: &str) -> FileSystemResult<()> {
         let file_path = PathBuf::from(path);
 
@@ -546,6 +567,23 @@ impl FileSystem for RealFileSystem {
             .map_err(|e| FileSystemError::new(format!("Failed to write file: {}", e)))?;
 
         Ok(())
+    }
+
+    fn write_file_bytes(&self, path: &str, content: &[u8]) -> FileSystemResult<()> {
+        let file_path = PathBuf::from(path);
+
+        // Verify parent directory exists
+        if let Some(parent) = file_path.parent() {
+            if !parent.exists() {
+                return Err(FileSystemError::new(format!(
+                    "Parent directory does not exist: {}",
+                    parent.display()
+                )));
+            }
+        }
+
+        fs::write(&file_path, content)
+            .map_err(|e| FileSystemError::new(format!("Failed to write file: {}", e)))
     }
 
     fn open_file(&self, path: &str) -> FileSystemResult<()> {

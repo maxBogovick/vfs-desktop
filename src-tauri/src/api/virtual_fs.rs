@@ -79,6 +79,29 @@ impl VfsNode {
             VfsNode::Directory { modified, .. } => *modified,
         }
     }
+
+    /// Объединить с другим узлом (для копирования директорий)
+    /// Если оба узла - директории, содержимое other вливается в self.
+    /// Иначе self заменяется на other.
+    fn merge_with(&mut self, other: VfsNode) {
+        match (self, other) {
+            (VfsNode::Directory { children: self_children, .. }, VfsNode::Directory { children: other_children, .. }) => {
+                for (name, other_child) in other_children {
+                    match self_children.entry(name) {
+                        std::collections::hash_map::Entry::Occupied(mut entry) => {
+                            entry.get_mut().merge_with(other_child);
+                        }
+                        std::collections::hash_map::Entry::Vacant(entry) => {
+                            entry.insert(other_child);
+                        }
+                    }
+                }
+            }
+            (myself, other) => {
+                *myself = other;
+            }
+        }
+    }
 }
 
 /// Состояние виртуальной файловой системы
@@ -949,7 +972,14 @@ impl FileSystem for VirtualFileSystem {
         match current {
             VfsNode::Directory { children, modified, .. } => {
                 for (name, node) in nodes_to_copy {
-                    children.insert(name, node);
+                    match children.entry(name) {
+                        std::collections::hash_map::Entry::Occupied(mut entry) => {
+                            entry.get_mut().merge_with(node);
+                        }
+                        std::collections::hash_map::Entry::Vacant(entry) => {
+                            entry.insert(node);
+                        }
+                    }
                 }
                 *modified = current_timestamp();
             }
@@ -994,7 +1024,14 @@ impl FileSystem for VirtualFileSystem {
 
         match current {
             VfsNode::Directory { children, modified, .. } => {
-                children.insert(new_name.to_string(), node);
+                match children.entry(new_name.to_string()) {
+                    std::collections::hash_map::Entry::Occupied(mut entry) => {
+                        entry.get_mut().merge_with(node);
+                    }
+                    std::collections::hash_map::Entry::Vacant(entry) => {
+                        entry.insert(node);
+                    }
+                }
                 *modified = current_timestamp();
             }
             VfsNode::File { .. } => {
@@ -1056,6 +1093,17 @@ impl FileSystem for VirtualFileSystem {
         }
     }
 
+    fn read_file_bytes(&self, path: &str) -> FileSystemResult<Vec<u8>> {
+        let node = self.find_node(path)?;
+
+        match node {
+            VfsNode::File { content, .. } => Ok(content.clone()),
+            VfsNode::Directory { .. } => {
+                Err(FileSystemError::new(format!("'{}' является директорией", path)))
+            }
+        }
+    }
+
     fn write_file_content(&self, path: &str, content: &str) -> FileSystemResult<()> {
         let normalized = self.normalize_path_internal(path);
 
@@ -1103,6 +1151,64 @@ impl FileSystem for VirtualFileSystem {
                     // Create new file
                     children.insert(file_name.to_string(), VfsNode::File {
                         content: content.as_bytes().to_vec(),
+                        modified: current_timestamp(),
+                        created: current_timestamp(),
+                    });
+                }
+                *modified = current_timestamp();
+
+                drop(state);
+                self.save_state()?;
+                Ok(())
+            }
+            VfsNode::File { .. } => {
+                Err(FileSystemError::new("Родительский путь не является директорией"))
+            }
+        }
+    }
+
+    fn write_file_bytes(&self, path: &str, content: &[u8]) -> FileSystemResult<()> {
+        let normalized = self.normalize_path_internal(path);
+
+        let mut state = self.state.write()
+            .map_err(|_| FileSystemError::new("Не удалось получить блокировку"))?;
+
+        let parts: Vec<&str> = normalized.split('/').filter(|s| !s.is_empty()).collect();
+        if parts.is_empty() {
+            return Err(FileSystemError::new("Некорректный путь файла"));
+        }
+
+        let file_name = parts.last().unwrap();
+        let parent_parts = &parts[..parts.len().saturating_sub(1)];
+
+        let mut current = &mut state.root;
+        for part in parent_parts {
+            match current {
+                VfsNode::Directory { children, .. } => {
+                    current = children.get_mut(&part.to_string())
+                        .ok_or_else(|| FileSystemError::new(format!("Директория не найдена: {}", part)))?;
+                }
+                VfsNode::File { .. } => {
+                    return Err(FileSystemError::new("Путь содержит файл вместо директории"));
+                }
+            }
+        }
+
+        match current {
+            VfsNode::Directory { children, modified, .. } => {
+                if let Some(existing_node) = children.get_mut(*file_name) {
+                    match existing_node {
+                        VfsNode::File { content: existing_content, modified: file_modified, .. } => {
+                            *existing_content = content.to_vec();
+                            *file_modified = current_timestamp();
+                        }
+                        VfsNode::Directory { .. } => {
+                            return Err(FileSystemError::new("Путь указывает на директорию"));
+                        }
+                    }
+                } else {
+                    children.insert(file_name.to_string(), VfsNode::File {
+                        content: content.to_vec(),
                         modified: current_timestamp(),
                         created: current_timestamp(),
                     });

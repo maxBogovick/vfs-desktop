@@ -64,7 +64,7 @@ export function useFileOperationsProgress() {
   };
 
   // Copy items with progress
-  const copyItemsWithProgress = async (sources: string[], destination: string): Promise<void> => {
+  const copyItemsWithProgress = async (sources: string[], destination: string, sourceFileSystem?: string, destinationFileSystem?: string): Promise<void> => {
     await initializeListener();
 
     const operationId = generateOperationId();
@@ -95,6 +95,8 @@ export function useFileOperationsProgress() {
         operationId,
         sources,
         destination,
+        sourceFileSystem: sourceFileSystem || null,
+        destinationFileSystem: destinationFileSystem || null,
       });
 
       success('Copy completed', `Successfully copied ${sources.length} item(s)`);
@@ -105,7 +107,7 @@ export function useFileOperationsProgress() {
   };
 
   // Move items with progress
-  const moveItemsWithProgress = async (sources: string[], destination: string): Promise<void> => {
+  const moveItemsWithProgress = async (sources: string[], destination: string, sourceFileSystem?: string, destinationFileSystem?: string): Promise<void> => {
     await initializeListener();
 
     const operationId = generateOperationId();
@@ -136,6 +138,8 @@ export function useFileOperationsProgress() {
         operationId,
         sources,
         destination,
+        sourceFileSystem: sourceFileSystem || null,
+        destinationFileSystem: destinationFileSystem || null,
       });
 
       success('Move completed', `Successfully moved ${sources.length} item(s)`);
@@ -146,7 +150,7 @@ export function useFileOperationsProgress() {
   };
 
   // Delete items with progress
-  const deleteItemsWithProgress = async (paths: string[]): Promise<void> => {
+  const deleteItemsWithProgress = async (paths: string[], panelFs?: string): Promise<void> => {
     await initializeListener();
 
     const operationId = generateOperationId();
@@ -176,6 +180,7 @@ export function useFileOperationsProgress() {
       await invoke('delete_items_with_progress_command', {
         operationId,
         paths,
+        panelFs: panelFs || null,
       });
 
       success('Delete completed', `Successfully deleted ${paths.length} item(s)`);

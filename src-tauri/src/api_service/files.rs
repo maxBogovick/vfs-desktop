@@ -361,6 +361,22 @@ impl FileService {
         })
     }
 
+    /// Read file content as bytes
+    ///
+    /// # Arguments
+    /// * `path` - File path to read
+    /// * `panel_fs` - Optional filesystem backend ("real" or "virtual")
+    pub fn read_file_bytes(&self, path: &str, panel_fs: Option<&str>) -> ApiResult<Vec<u8>> {
+        tracing::debug!("Reading file bytes: {} with backend: {:?}", path, panel_fs);
+
+        self.get_filesystem_by_backend(panel_fs).as_trait().read_file_bytes(path).map_err(|err| {
+            tracing::error!("Failed to read file bytes: {}", err.message);
+            ApiError::OperationFailed {
+                message: err.message,
+            }
+        })
+    }
+
     /// Write file content
     ///
     /// # Arguments
@@ -379,6 +395,30 @@ impl FileService {
 
         self.get_filesystem_by_backend(panel_fs).as_trait().write_file_content(path, content).map_err(|err| {
             tracing::error!("Failed to write file: {}", err.message);
+            ApiError::OperationFailed {
+                message: err.message,
+            }
+        })
+    }
+
+    /// Write file content as bytes
+    ///
+    /// # Arguments
+    /// * `path` - File path to write
+    /// * `content` - Content to write to the file
+    /// * `panel_fs` - Optional filesystem backend ("real" or "virtual")
+    pub fn write_file_bytes(&self, path: &str, content: &[u8], panel_fs: Option<&str>) -> ApiResult<()> {
+        tracing::info!("Writing file bytes: {} with backend: {:?}", path, panel_fs);
+
+        // Validate path
+        if path.is_empty() {
+            return Err(ApiError::ValidationError {
+                message: "File path cannot be empty".to_string(),
+            });
+        }
+
+        self.get_filesystem_by_backend(panel_fs).as_trait().write_file_bytes(path, content).map_err(|err| {
+            tracing::error!("Failed to write file bytes: {}", err.message);
             ApiError::OperationFailed {
                 message: err.message,
             }
@@ -433,20 +473,23 @@ impl FileService {
     /// * `source_path` - Source file path
     /// * `destination_dir` - Destination directory
     /// * `new_name` - Custom name for the copied file
-    /// * `panel_fs` - Optional filesystem backend ("real" or "virtual")
+    /// * `source_fs` - Optional source filesystem backend
+    /// * `dest_fs` - Optional destination filesystem backend
     pub fn copy_with_custom_name(
         &self,
         source_path: &str,
         destination_dir: &str,
         new_name: &str,
-        panel_fs: Option<&str>,
+        source_fs: Option<&str>,
+        dest_fs: Option<&str>,
     ) -> ApiResult<()> {
         tracing::info!(
-            "Copying '{}' to '{}' with custom name '{}' with backend: {:?}",
+            "Copying '{}' to '{}' with custom name '{}' (src_fs: {:?}, dest_fs: {:?})",
             source_path,
             destination_dir,
             new_name,
-            panel_fs
+            source_fs,
+            dest_fs
         );
 
         // Validate inputs
@@ -462,7 +505,38 @@ impl FileService {
             });
         }
 
-        self.get_filesystem_by_backend(panel_fs).as_trait()
+        // Determine effective filesystems
+        let is_real_source = source_fs.is_none() || source_fs == Some("real");
+        let is_real_dest = dest_fs.is_none() || dest_fs == Some("real");
+
+        // If filesystems differ, perform manual read/write
+        if is_real_source != is_real_dest || !is_real_source {
+             tracing::info!("Performing cross-filesystem copy with custom name");
+             
+             // 1. Read content from source
+             let content = self.read_file_bytes(source_path, source_fs)?;
+
+             // 2. Create file in destination with new name and content
+             // Construct full path logic is needed if write_file_bytes expects full path
+             // But create_file handles dir + name.
+             // write_file_bytes expects full path.
+             
+             // Construct path:
+             // Note: simplistic join. For proper cross-platform/virtual path join we might need more logic
+             // but here we assume simple slash join if not real path manipulation.
+             let dest_path = if destination_dir.ends_with('/') || destination_dir.ends_with('\\') {
+                 format!("{}{}", destination_dir, new_name)
+             } else {
+                 format!("{}/{}", destination_dir, new_name)
+             };
+             
+             self.write_file_bytes(&dest_path, &content, dest_fs)?;
+             
+             return Ok(());
+        }
+
+        // Same (Real) filesystem optimization
+        self.get_filesystem_by_backend(source_fs).as_trait()
             .copy_with_custom_name(source_path, destination_dir, new_name)
             .map_err(|err| {
                 tracing::error!("Failed to copy with custom name: {}", err.message);

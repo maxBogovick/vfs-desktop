@@ -8,6 +8,7 @@ const isDragging = ref(false);
 const draggedItems = ref<FileItem[]>([]);
 const dropTarget = ref<FileItem | null>(null);
 const dragOverId = ref<string | null>(null);
+const draggedItemsFilesystem = ref<string | undefined>(undefined);
 
 export function useDragDrop() {
   // Используем глобальное состояние вместо создания нового
@@ -15,11 +16,12 @@ export function useDragDrop() {
   const hasDraggedItems = computed(() => draggedItems.value.length > 0);
 
   // Start dragging
-  const startDrag = (items: FileItem[], event: DragEvent) => {
+  const startDrag = (items: FileItem[], event: DragEvent, filesystem?: string) => {
     console.log('[useDragDrop] startDrag called with', items.length, 'items');
     isDragging.value = true;
     draggedItems.value = items;
-    console.log('[useDragDrop] State updated:', { isDragging: isDragging.value, count: draggedItems.value.length });
+    draggedItemsFilesystem.value = filesystem;
+    console.log('[useDragDrop] State updated:', { isDragging: isDragging.value, count: draggedItems.value.length, filesystem });
 
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = 'copyMove';
@@ -77,25 +79,11 @@ export function useDragDrop() {
   const handleDrop = async (
     item: FileItem | null,
     event: DragEvent,
-    onMove: (sources: string[], destination: string) => Promise<void>,
-    onCopy: (sources: string[], destination: string) => Promise<void>,
+    onMove: (sources: string[], destination: string, sourceFs?: string, destFs?: string) => Promise<void>,
+    onCopy: (sources: string[], destination: string, sourceFs?: string, destFs?: string) => Promise<void>,
     destinationFs?: FileSystemBackend
   ) => {
     event.preventDefault();
-
-    // Validate filesystem compatibility
-    const { isDualMode, activePanel, leftPanelFilesystem, rightPanelFilesystem } = useDualPanel();
-    
-    if (isDualMode.value && destinationFs) {
-      const sourceFs = activePanel.value === 'left' ? leftPanelFilesystem.value : rightPanelFilesystem.value;
-      
-      if (sourceFs !== destinationFs) {
-        const { error } = useNotifications();
-        error('Invalid operation', 'Cannot move/copy files between different filesystem types');
-        endDrag();
-        return;
-      }
-    }
 
     if (!item || item.type !== 'folder') {
       endDrag();
@@ -108,9 +96,9 @@ export function useDragDrop() {
 
     try {
       if (isCopy) {
-        await onCopy(sources, destination);
+        await onCopy(sources, destination, draggedItemsFilesystem.value, destinationFs);
       } else {
-        await onMove(sources, destination);
+        await onMove(sources, destination, draggedItemsFilesystem.value, destinationFs);
       }
     } catch (error) {
       console.error('Drop failed:', error);
@@ -126,6 +114,7 @@ export function useDragDrop() {
     draggedItems.value = [];
     dropTarget.value = null;
     dragOverId.value = null;
+    draggedItemsFilesystem.value = undefined;
   };
 
   // Check if item is drag target

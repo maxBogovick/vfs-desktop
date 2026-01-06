@@ -269,6 +269,8 @@ pub async fn copy_items_with_progress_command<R: Runtime>(
     operation_id: String,
     sources: Vec<String>,
     destination: String,
+    source_file_system: Option<String>,
+    destination_file_system: Option<String>,
 ) -> Result<(), String> {
     // Вычисляем общий размер
     let (total_bytes, total_items) = calculate_total_size(&sources)
@@ -286,7 +288,7 @@ pub async fn copy_items_with_progress_command<R: Runtime>(
     emit_progress(&app, &tracker);
 
     // Выполняем операцию
-    match copy_items_with_progress(&sources, &destination, &tracker, &app) {
+    match copy_items_with_progress(&sources, &destination, &tracker, &app, source_file_system, destination_file_system) {
         Ok(_) => {
             // Убеждаемся, что прогресс на 100%
             tracker.set_total_bytes(tracker.get_current_bytes());
@@ -311,6 +313,8 @@ pub async fn move_items_with_progress_command<R: Runtime>(
     operation_id: String,
     sources: Vec<String>,
     destination: String,
+    source_file_system: Option<String>,
+    destination_file_system: Option<String>,
 ) -> Result<(), String> {
     // Вычисляем общий размер
     let (total_bytes, total_items) = calculate_total_size(&sources)
@@ -328,7 +332,7 @@ pub async fn move_items_with_progress_command<R: Runtime>(
     emit_progress(&app, &tracker);
 
     // Выполняем операцию
-    match move_items_with_progress(&sources, &destination, &tracker, &app) {
+    match move_items_with_progress(&sources, &destination, &tracker, &app, source_file_system, destination_file_system) {
         Ok(_) => {
             // Убеждаемся, что прогресс на 100%
             tracker.set_total_bytes(tracker.get_current_bytes());
@@ -352,6 +356,7 @@ pub async fn delete_items_with_progress_command<R: Runtime>(
     app: AppHandle<R>,
     operation_id: String,
     paths: Vec<String>,
+    panel_fs: Option<String>,
 ) -> Result<(), String> {
     // Вычисляем общий размер
     let (total_bytes, total_items) = calculate_total_size(&paths)
@@ -369,7 +374,7 @@ pub async fn delete_items_with_progress_command<R: Runtime>(
     emit_progress(&app, &tracker);
 
     // Выполняем операцию
-    match delete_items_with_progress(&paths, &tracker, &app) {
+    match delete_items_with_progress(&paths, &tracker, &app, panel_fs) {
         Ok(_) => {
             // Убеждаемся, что прогресс на 100%
             tracker.set_total_bytes(tracker.get_current_bytes());
@@ -469,9 +474,10 @@ pub struct FileMetadata {
 pub fn check_file_conflict(
     source_path: String,
     destination_dir: String,
+    source_file_system: Option<String>,
+    destination_file_system: Option<String>,
 ) -> Result<Option<FileConflictInfo>, String> {
     use std::path::Path;
-    use std::fs;
 
     let source = Path::new(&source_path);
 
@@ -482,49 +488,32 @@ pub fn check_file_conflict(
         .ok_or_else(|| "Invalid source path".to_string())?;
 
     // Формируем путь назначения
-    let dest_path = Path::new(&destination_dir).join(file_name);
+    let dest_path_buf = Path::new(&destination_dir).join(file_name);
+    let dest_path = dest_path_buf.to_string_lossy().to_string();
 
-    // Проверяем существует ли файл в месте назначения
-    if !dest_path.exists() {
-        return Ok(None); // Нет конфликта
-    }
+    // Проверяем существует ли файл в месте назначения (using API for correct FS handling)
+    let dest_info = match API.files.get_file_info(&dest_path, destination_file_system.as_deref()) {
+        Ok(info) => info,
+        Err(_) => return Ok(None), // Нет конфликта
+    };
 
     // Получаем метаданные источника
-    let source_metadata = fs::metadata(&source)
+    let source_info = API.files.get_file_info(&source_path, source_file_system.as_deref())
         .map_err(|e| format!("Failed to read source metadata: {}", e))?;
-
-    // Получаем метаданные назначения
-    let dest_metadata = fs::metadata(&dest_path)
-        .map_err(|e| format!("Failed to read destination metadata: {}", e))?;
-
-    // Получаем timestamps
-    let source_modified = source_metadata
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    let dest_modified = dest_metadata
-        .modified()
-        .ok()
-        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
 
     // Создаем информацию о конфликте
     Ok(Some(FileConflictInfo {
         source_path: source_path.clone(),
-        destination_path: dest_path.to_string_lossy().to_string(),
+        destination_path: dest_path,
         source_file: FileMetadata {
             name: file_name.to_string(),
-            size: source_metadata.len(),
-            modified: source_modified,
+            size: source_info.size.unwrap_or(0),
+            modified: source_info.modified.unwrap_or(0),
         },
         destination_file: FileMetadata {
             name: file_name.to_string(),
-            size: dest_metadata.len(),
-            modified: dest_modified,
+            size: dest_info.size.unwrap_or(0),
+            modified: dest_info.modified.unwrap_or(0),
         },
     }))
 }
@@ -534,10 +523,11 @@ pub fn copy_file_with_custom_name(
     source_path: String,
     destination_dir: String,
     new_name: String,
-    panel_fs: Option<String>,
+    source_file_system: Option<String>,
+    destination_file_system: Option<String>,
 ) -> Result<(), String> {
     API.files
-        .copy_with_custom_name(&source_path, &destination_dir, &new_name, panel_fs.as_deref())
+        .copy_with_custom_name(&source_path, &destination_dir, &new_name, source_file_system.as_deref(), destination_file_system.as_deref())
         .map_err(|e| e.to_string())
 }
 

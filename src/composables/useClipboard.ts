@@ -6,6 +6,7 @@ type ClipboardOperation = 'copy' | 'cut' | null;
 // Module-level shared clipboard state (singleton for cross-panel copy/paste)
 const clipboardItems = ref<FileItem[]>([]);
 const operation = ref<ClipboardOperation>(null);
+const sourceFilesystem = ref<string | undefined>(undefined);
 
 export function useClipboard() {
   const hasClipboardItems = computed(() => clipboardItems.value.length > 0);
@@ -13,21 +14,23 @@ export function useClipboard() {
   const isCutOperation = computed(() => operation.value === 'cut');
 
   // Copy items to clipboard
-  const copy = (items: FileItem[]) => {
+  const copy = (items: FileItem[], filesystem?: string) => {
     if (items.length === 0) return;
 
     clipboardItems.value = [...items];
     operation.value = 'copy';
+    sourceFilesystem.value = filesystem;
 
     console.log(`[Clipboard] Copied ${items.length} item(s):`, items.map(i => i.name));
   };
 
   // Cut items to clipboard
-  const cut = (items: FileItem[]) => {
+  const cut = (items: FileItem[], filesystem?: string) => {
     if (items.length === 0) return;
 
     clipboardItems.value = [...items];
     operation.value = 'cut';
+    sourceFilesystem.value = filesystem;
 
     console.log(`[Clipboard] Cut ${items.length} item(s):`, items.map(i => i.name));
   };
@@ -35,8 +38,8 @@ export function useClipboard() {
   // Paste items from clipboard
   const paste = async (
     destinationPath: string,
-    onCopy: (sources: string[], destination: string) => Promise<void>,
-    onMove: (sources: string[], destination: string) => Promise<void>
+    onCopy: (sources: string[], destination: string, sourceFs?: string) => Promise<void>,
+    onMove: (sources: string[], destination: string, sourceFs?: string) => Promise<void>
   ): Promise<void> => {
     if (!hasClipboardItems.value) {
       console.warn('[Clipboard] Paste failed: Clipboard is empty');
@@ -49,10 +52,10 @@ export function useClipboard() {
 
     try {
       if (operation.value === 'copy') {
-        await onCopy(sources, destinationPath);
+        await onCopy(sources, destinationPath, sourceFilesystem.value);
         console.log(`[Clipboard] ✅ Pasted ${sources.length} item(s) (copied)`);
       } else if (operation.value === 'cut') {
-        await onMove(sources, destinationPath);
+        await onMove(sources, destinationPath, sourceFilesystem.value);
         console.log(`[Clipboard] ✅ Pasted ${sources.length} item(s) (moved)`);
         // Clear clipboard after cut operation
         clear();
@@ -67,6 +70,7 @@ export function useClipboard() {
   const clear = () => {
     clipboardItems.value = [];
     operation.value = null;
+    sourceFilesystem.value = undefined;
   };
 
   // Check if a specific item is in clipboard
@@ -85,5 +89,6 @@ export function useClipboard() {
     paste,
     clear,
     isInClipboard,
+    sourceFilesystem,
   };
 }

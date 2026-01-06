@@ -12,8 +12,8 @@ interface Props {
 }
 
 interface Emits {
-  (e: 'editFile', item: FileItem): void;
-  (e: 'previewFile', item: FileItem): void;
+  (e: 'editFile', item: FileItem, panelFs?: string): void;
+  (e: 'previewFile', item: FileItem, panelFs?: string): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -203,8 +203,8 @@ const handleSwitchRightFilesystem = async (backend: FileSystemBackend) => {
         @update:tabs="(tabs) => leftPanelTabs = tabs"
         @update:active-tab-id="(id) => leftPanelActiveTabId = id"
         @switch-filesystem="handleSwitchLeftFilesystem"
-        @edit-file="(item) => emit('editFile', item)"
-        @preview-file="(item) => emit('previewFile', item)"
+        @edit-file="(item, panelFs) => emit('editFile', item, panelFs)"
+        @preview-file="(item, panelFs) => emit('previewFile', item, panelFs)"
       />
     </div>
 
@@ -231,8 +231,8 @@ const handleSwitchRightFilesystem = async (backend: FileSystemBackend) => {
         @update:tabs="(tabs) => rightPanelTabs = tabs"
         @update:active-tab-id="(id) => rightPanelActiveTabId = id"
         @switch-filesystem="handleSwitchRightFilesystem"
-        @edit-file="(item) => emit('editFile', item)"
-        @preview-file="(item) => emit('previewFile', item)"
+        @edit-file="(item, panelFs) => emit('editFile', item, panelFs)"
+        @preview-file="(item, panelFs) => emit('previewFile', item, panelFs)"
       />
     </div>
   </div>

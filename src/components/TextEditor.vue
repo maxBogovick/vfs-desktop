@@ -6,6 +6,7 @@ import { useFileContentCache } from '../composables/useFileContentCache';
 interface Props {
   file: FileItem | null;
   isOpen: boolean;
+  panelFilesystem?: string;
 }
 
 interface Emits {
@@ -40,7 +41,7 @@ watch(() => props.file, async (newFile) => {
   error.value = null;
 
   try {
-    const content = await getFileContent(newFile.path, 10_000_000); // 10MB limit
+    const content = await getFileContent(newFile.path, 10_000_000, props.panelFilesystem); // 10MB limit
     fileContent.value = content;
     originalContent.value = content;
     hasChanges.value = false;

@@ -181,9 +181,14 @@ export function useFileSystem() {
   };
 
   // Copy items
-  const copyItems = async (sources: string[], destination: string, panelFs?: string): Promise<void> => {
+  const copyItems = async (sources: string[], destination: string, sourceFileSystem?: string, destinationFileSystem?: string): Promise<void> => {
     try {
-      await invoke('copy_items', { sources, destination, panelFs: panelFs || null });
+      await invoke('copy_items', { 
+        sources, 
+        destination, 
+        sourceFileSystem: sourceFileSystem || null, 
+        destinationFileSystem: destinationFileSystem || null 
+      });
     } catch (e) {
       console.error(e);
       throw new Error(e instanceof Error ? e.message : 'Failed to copy items');
@@ -191,9 +196,14 @@ export function useFileSystem() {
   };
 
   // Move items
-  const moveItems = async (sources: string[], destination: string, panelFs?: string): Promise<void> => {
+  const moveItems = async (sources: string[], destination: string, sourceFileSystem?: string, destinationFileSystem?: string): Promise<void> => {
     try {
-      await invoke('move_items', { sources, destination, panelFs: panelFs || null });
+      await invoke('move_items', { 
+        sources, 
+        destination, 
+        sourceFileSystem: sourceFileSystem || null, 
+        destinationFileSystem: destinationFileSystem || null 
+      });
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to move items');
     }
