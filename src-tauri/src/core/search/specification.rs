@@ -12,8 +12,10 @@ pub trait FileSpecification: Send + Sync {
 ///
 /// # Пример
 /// ```
+/// use vfdir_lib::core::search::enums::{NameSpecification, TextMatchMode};
+/// use vfdir_lib::core::search::specification::{AndSpecification, FileSpecification};
 /// let specs: Vec<Box<dyn FileSpecification>> = vec![
-///     Box::new(NameSpec::new("test".into(), TextMatchMode::Contains)),
+///     Box::new(NameSpecification::new("test".into(), TextMatchMode::Contains).unwrap()),
 ///     Box::new(SizeSpec::new(Some(1024), None)),
 /// ];
 /// let and_spec = AndSpecification::new(specs);
@@ -345,5 +347,21 @@ use super::*;
         assert!(spec.is_satisfied_by(&create_test_file("report_2023.pdf")));  // 1 цифра
         // Не найдет если слишком разные
         assert!(!spec.is_satisfied_by(&create_test_file("document_2024.pdf")));
+    }
+
+    #[test]
+    fn test_contains_search() {
+        let spec = NameSpecification::new(
+            "t".to_string(),
+            TextMatchMode::Contains
+        ).unwrap();
+        assert!(spec.is_satisfied_by(&create_test_file("test.txt")))
+    }#[test]
+    fn wrong_contains_search() {
+        let spec = NameSpecification::new(
+            "ts".to_string(),
+            TextMatchMode::Contains
+        ).unwrap();
+        assert!(!spec.is_satisfied_by(&create_test_file("test.txt")))
     }
 }

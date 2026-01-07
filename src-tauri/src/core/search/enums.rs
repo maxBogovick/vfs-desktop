@@ -33,10 +33,11 @@ impl NameSpecification {
     ///
     /// # Примеры
     /// ```
+    /// use crate::vfdir_lib::core::search::enums::*;
     /// let spec = NameSpecification::new(
     ///     "test".into(),
     ///     TextMatchMode::Contains
-    /// )?;
+    /// );
     /// ```
     pub fn new(pattern: String, mode: TextMatchMode) -> Result<Self, String> {
         // 🎯 ВАША ЗАДАЧА:
@@ -107,8 +108,9 @@ impl FileSpecification for NameSpecification {
                 //if d.eq(&max_distance) { true } else { false }
                 d <= max_distance
             }
-
-            _ => false
+            TextMatchMode::Contains => {
+                item.name.to_lowercase().contains(&self.pattern.to_lowercase())
+            }
         }
     }
 }
@@ -126,6 +128,11 @@ mod tests {
 
         assert_eq!(exact, TextMatchMode::Exact);
         assert_eq!(fuzzy, TextMatchMode::Fuzzy(2));
+        assert_eq!(contains, TextMatchMode::Contains);
+
     }
+
+
+
 }
 

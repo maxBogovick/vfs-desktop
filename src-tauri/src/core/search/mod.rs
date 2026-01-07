@@ -1,2 +1,2 @@
-mod enums;
-mod specification;
+pub mod enums;
+pub mod specification;
