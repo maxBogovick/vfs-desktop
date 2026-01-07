@@ -4,12 +4,14 @@
  * System-level operations and information.
  */
 
+use std::sync::Mutex;
 use super::{ApiResult, ApiError};
 use super::models::{FileSystemEntry, SystemStats, DirectorySize};
 use crate::api::{RealFileSystem, virtual_fs::VirtualFileSystem};
 use crate::config::FileSystemBackend;
 use crate::core::FileSystem;
 use crate::state::APP_CONFIG;
+use sysinfo::{System, Pid, ProcessesToUpdate};
 
 /// Enum для хранения разных типов файловых систем
 enum FileSystemInstance {
@@ -26,12 +28,16 @@ impl FileSystemInstance {
     }
 }
 
-pub struct SystemService;
+pub struct SystemService {
+    sys: Mutex<System>,
+}
 
 impl SystemService {
     pub fn new() -> Self {
         tracing::debug!("Initializing SystemService");
-        Self
+        Self {
+            sys: Mutex::new(System::new_all()),
+        }
     }
 
     /// Get filesystem instance based on configuration
@@ -102,19 +108,23 @@ impl SystemService {
 
     /// Get current process system statistics
     pub fn get_stats(&self) -> ApiResult<SystemStats> {
-        tracing::debug!("Getting system stats");
-        use sysinfo::{System, Pid};
-
-        let mut sys = System::new_all();
+        // tracing::debug!("Getting system stats"); // Reduced log spam
+        
+        let mut sys = self.sys.lock().map_err(|_| ApiError::Internal {
+            message: "Failed to lock system info".to_string(),
+        })?;
+        
         let pid = Pid::from_u32(std::process::id());
-        sys.refresh_all();
+        
+        // Refresh only the specific process to get accurate CPU usage
+        sys.refresh_processes(ProcessesToUpdate::All, true);
 
         if let Some(process) = sys.process(pid) {
             let stats = SystemStats {
                 memory_mb: process.memory() as f64 / 1024.0 / 1024.0,
                 cpu_percent: process.cpu_usage(),
             };
-            tracing::debug!("System stats: memory={:.2}MB, cpu={:.1}%", stats.memory_mb, stats.cpu_percent);
+            // tracing::debug!("System stats: memory={:.2}MB, cpu={:.1}%", stats.memory_mb, stats.cpu_percent);
             Ok(stats)
         } else {
             tracing::error!("Failed to get process information");

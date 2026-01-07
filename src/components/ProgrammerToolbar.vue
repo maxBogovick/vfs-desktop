@@ -8,6 +8,8 @@ interface Emits {
   (e: 'toggle-terminal'): void;
   (e: 'batch-rename'): void;
   (e: 'open-ftp'): void;
+  (e: 'open-file-colors'): void;
+  (e: 'toggle-resource-monitor'): void;
 }
 
 defineProps<Props>();
@@ -55,6 +57,16 @@ const emit = defineEmits<Emits>();
     >
       <span class="text-[14px]">🌐</span>
       <span>FTP</span>
+    </button>
+
+    <!-- Resource Monitor Button -->
+    <button
+      @click="emit('toggle-resource-monitor')"
+      class="flex items-center gap-1 px-2 py-1 text-[11px] border rounded bg-[#ECE9D8] border-[#919B9C] hover:bg-[#C1D2EE] hover:border-[#0A246A]"
+      title="Toggle Resource Monitor"
+    >
+      <span class="text-[14px]">📊</span>
+      <span>Monitor</span>
     </button>
 
     <!-- File Colors Button -->

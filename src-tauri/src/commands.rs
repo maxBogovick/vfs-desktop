@@ -449,7 +449,7 @@ use crate::api_service::models::SystemStats;
 
 /// Получить статистику потребления ресурсов приложением
 #[tauri::command]
-pub fn get_system_stats() -> Result<SystemStats, String> {
+pub async fn get_system_stats() -> Result<SystemStats, String> {
     API.system.get_stats().map_err(|e| e.to_string())
 }
 

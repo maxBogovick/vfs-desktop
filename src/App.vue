@@ -24,6 +24,7 @@ import ProgrammerToolbar from './components/ProgrammerToolbar.vue';
 import PanelToolbar from './components/PanelToolbar.vue';
 import TextEditor from './components/TextEditor.vue';
 import VaultOverlay from './components/VaultOverlay.vue';
+import ResourceMonitor from './components/ResourceMonitor.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useVault } from './composables/useVault';
@@ -327,6 +328,7 @@ const batchOperationFiles = ref<FileItem[]>([]);
 const showTextEditor = ref(false);
 const editorFile = ref<FileItem | null>(null);
 const editorFileFs = ref<string | undefined>(undefined);
+const isResourceMonitorVisible = ref(false);
 
 // Inline File Creator state
 const showInlineCreator = ref(false);
@@ -1480,6 +1482,7 @@ onMounted(async () => {
         @toggle-terminal="toggleTerminal"
         @batch-rename="showBatchRenameDialog = true"
         @open-ftp="() => { /* TODO: implement FTP */ }"
+        @toggle-resource-monitor="isResourceMonitorVisible = !isResourceMonitorVisible"
         @open-file-colors="() => { settingsInitialTab = 'colors'; showSettings = true; }"
     />
 
@@ -1736,6 +1739,12 @@ onMounted(async () => {
 
     <!-- Vault Security Overlay -->
     <VaultOverlay />
+
+    <!-- Resource Monitor Overlay -->
+    <ResourceMonitor
+      :visible="isResourceMonitorVisible"
+      @close="isResourceMonitorVisible = false"
+    />
   </div>
 </template>
 
