@@ -139,6 +139,12 @@ const {
   handleCancel: handleConflictCancel,
 } = useConflictResolution();
 
+// Notifications
+const {
+  notifications: activeNotifications,
+  clear: clearNotifications,
+} = useNotifications();
+
 // Bookmarks
 const {
   bookmarks,
@@ -689,7 +695,7 @@ const commands = useCommands({
   onSelectAll: (allFiles: FileItem[]) => commands.selectAllCommand(allFiles, selectAll),
   onNewTab: addTab,
   onCloseTab: () => commands.closeTabCommand(tabs.value.length, closeTab, activeTabId.value),
-  onSettings: () => { settingsInitialTab = 'general'; showSettings.value = true; },
+  onSettings: () => { settingsInitialTab.value = 'general'; showSettings.value = true; },
 });
 
 // Toolbar handlers (for single panel mode)
@@ -739,8 +745,77 @@ const shortcuts = createKeyboardShortcuts(
     {
       openCommandPalette: () => { isCommandPaletteOpen.value = true; },
       closeDialogs: () => {
-        isCommandPaletteOpen.value = false;
-        previewFile.value = null;
+        // 1. Context Menu
+        if (contextMenu.value) {
+          closeContextMenu();
+          return;
+        }
+
+        // 2. Critical Modals
+        if (confirmDialog.value.isOpen) {
+          closeConfirm();
+          return;
+        }
+        if (inputDialog.value.isOpen) {
+          closeInput();
+          return;
+        }
+        if (isConflictDialogOpen.value) {
+          handleConflictCancel();
+          return;
+        }
+
+        // 3. Feature Dialogs
+        if (isCommandPaletteOpen.value) {
+          isCommandPaletteOpen.value = false;
+          return;
+        }
+        if (propertiesDialog.value.isOpen) {
+          closeProperties();
+          return;
+        }
+        if (showBatchRenameDialog.value) {
+          showBatchRenameDialog.value = false;
+          return;
+        }
+        if (showBatchAttributeDialog.value) {
+          showBatchAttributeDialog.value = false;
+          return;
+        }
+        if (showInlineCreator.value) {
+          showInlineCreator.value = false;
+          return;
+        }
+
+        // 4. Overlays
+        if (showSettings.value) {
+          showSettings.value = false;
+          return;
+        }
+        if (showDashboard.value) {
+          showDashboard.value = false;
+          return;
+        }
+        if (showBatchQueue.value) {
+          showBatchQueue.value = false;
+          return;
+        }
+        if (previewFile.value) {
+          previewFile.value = null;
+          return;
+        }
+        if (showTextEditor.value) {
+          handleCloseEditor();
+          return;
+        }
+
+        // 5. Notifications
+        if (activeNotifications.value.length > 0) {
+          clearNotifications();
+          return;
+        }
+
+        // 6. Selection
         if (isDualMode.value) {
           const methods = getActivePanelMethods();
           if (methods) methods.clearSelection();
@@ -853,7 +928,7 @@ const shortcuts = createKeyboardShortcuts(
         toggleProgrammerMode();
       },
       toggleBookmark: handleToggleBookmark,
-      openSettings: () => { settingsInitialTab = 'general'; showSettings.value = true; },
+      openSettings: () => { settingsInitialTab.value = 'general'; showSettings.value = true; },
       // Dual panel switch (Tab)
       switchPanels: isDualMode.value ? () => {
         switchActivePanel(activePanel.value === 'left' ? 'right' : 'left');
