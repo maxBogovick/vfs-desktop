@@ -49,6 +49,7 @@ import { useProgrammerMode } from './composables/useProgrammerMode';
 import { useTemplates } from './composables/useTemplates';
 import { useTerminal } from './composables/useTerminal';
 import { useTheme } from './composables/useTheme';
+import { useFileColoring } from './composables/useFileColoring';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type {FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange, FileSystemBackend} from './types';
@@ -305,6 +306,7 @@ const showHidden = ref(false);
 const isCommandPaletteOpen = ref(false);
 const previewFile = ref<FileItem | null>(null);
 const showSettings = ref(false);
+const settingsInitialTab = ref<'general' | 'colors'>('general');
 const showDashboard = ref(false);
 const dashboardWidth = ref(400);
 const showBatchRenameDialog = ref(false);
@@ -687,7 +689,7 @@ const commands = useCommands({
   onSelectAll: (allFiles: FileItem[]) => commands.selectAllCommand(allFiles, selectAll),
   onNewTab: addTab,
   onCloseTab: () => commands.closeTabCommand(tabs.value.length, closeTab, activeTabId.value),
-  onSettings: () => { showSettings.value = true; },
+  onSettings: () => { settingsInitialTab = 'general'; showSettings.value = true; },
 });
 
 // Toolbar handlers (for single panel mode)
@@ -851,7 +853,7 @@ const shortcuts = createKeyboardShortcuts(
         toggleProgrammerMode();
       },
       toggleBookmark: handleToggleBookmark,
-      openSettings: () => { showSettings.value = true; },
+      openSettings: () => { settingsInitialTab = 'general'; showSettings.value = true; },
       // Dual panel switch (Tab)
       switchPanels: isDualMode.value ? () => {
         switchActivePanel(activePanel.value === 'left' ? 'right' : 'left');
@@ -1257,6 +1259,10 @@ onMounted(async () => {
   const { loadTheme } = useTheme();
   await loadTheme();
 
+  // Load File Coloring Config
+  const { loadConfig: loadColorConfig } = useFileColoring();
+  loadColorConfig();
+
   // Load bookmarks
   await loadBookmarks();
 
@@ -1393,6 +1399,7 @@ onMounted(async () => {
         @toggle-terminal="toggleTerminal"
         @batch-rename="showBatchRenameDialog = true"
         @open-ftp="() => { /* TODO: implement FTP */ }"
+        @open-file-colors="() => { settingsInitialTab = 'colors'; showSettings = true; }"
     />
 
     <!-- Main Content Area -->
@@ -1578,7 +1585,8 @@ onMounted(async () => {
     <!-- Settings -->
     <Settings
         v-if="showSettings"
-        @close="showSettings = false"
+        :initial-tab="settingsInitialTab"
+        @close="() => { showSettings = false; settingsInitialTab = 'general'; }"
     />
 
     <!-- Batch Rename Dialog -->

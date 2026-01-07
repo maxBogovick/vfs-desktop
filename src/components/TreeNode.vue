@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
 import type { TreeNode } from '../composables/useDirectoryTree';
+import { useFileColoring } from '../composables/useFileColoring';
 
 interface Props {
   node: TreeNode;
@@ -18,6 +19,8 @@ interface Emits {
 
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
+
+const { getFileStyle } = useFileColoring();
 
 const getFileIcon = (node: TreeNode) => {
   const item = node.item;
@@ -107,7 +110,7 @@ const handleDrop = (event: DragEvent) => {
       <span class="text-sm flex-shrink-0">{{ getFileIcon(node) }}</span>
 
       <!-- Name -->
-      <span class="text-[11px] truncate flex-1">{{ node.item.name }}</span>
+      <span class="text-[11px] truncate flex-1" :style="getFileStyle(node.item)">{{ node.item.name }}</span>
     </div>
 
     <!-- Children (recursive) -->

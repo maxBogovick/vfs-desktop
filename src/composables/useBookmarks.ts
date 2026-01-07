@@ -2,11 +2,12 @@ import { ref } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import type { Bookmark } from '../types';
 
-export function useBookmarks() {
-  const bookmarks = ref<Bookmark[]>([]);
-  const isLoading = ref(false);
-  const error = ref<string | null>(null);
+// Global state
+const bookmarks = ref<Bookmark[]>([]);
+const isLoading = ref(false);
+const error = ref<string | null>(null);
 
+export function useBookmarks() {
   // Load bookmarks from backend
   const loadBookmarks = async (): Promise<void> => {
     try {

@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import type { FileItem, ViewMode } from '../types';
 import type { FileGroup } from '../composables/useGrouping';
 import InlineFileCreator from './InlineFileCreator.vue';
+import { useFileColoring } from '../composables/useFileColoring';
 
 interface Props {
   items: FileItem[];
@@ -51,6 +52,8 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const emit = defineEmits<Emits>();
+
+const { getFileStyle } = useFileColoring();
 
 // Track collapsed groups
 const collapsedGroups = ref<Set<string>>(new Set());
@@ -201,7 +204,7 @@ const isFocused = (itemId: string) => {
               class="absolute top-1 left-1 w-3 h-3 cursor-pointer"
             />
             <div class="text-4xl mb-2">{{ getFileIcon(item) }}</div>
-            <div class="text-[10px] text-center break-words w-full">{{ item.name }}</div>
+            <div class="text-[10px] text-center break-words w-full":style="getFileStyle(item)">{{ item.name }}</div>
           </div>
         </div>
 
@@ -234,7 +237,7 @@ const isFocused = (itemId: string) => {
               class="w-3 h-3 flex-shrink-0 cursor-pointer"
             />
             <div class="text-lg flex-shrink-0">{{ getFileIcon(item) }}</div>
-            <div class="flex-1 min-w-0 text-[11px]">{{ item.name }}</div>
+            <div class="flex-1 min-w-0 text-[11px]":style="getFileStyle(item)">{{ item.name }}</div>
             <div v-if="item.modified" class="text-[10px] text-gray-500 flex-shrink-0 hidden sm:block">{{ item.modified }}</div>
             <div v-if="item.sizeFormatted" class="text-[10px] text-gray-500 flex-shrink-0 w-20 text-right">{{ item.sizeFormatted }}</div>
             <div v-if="item.tags && item.tags.length > 0" class="flex gap-1 flex-shrink-0">
@@ -343,7 +346,7 @@ const isFocused = (itemId: string) => {
         <span :class="[
           'text-[11px] text-center break-words w-full px-1',
           isFolder(item) && 'font-bold'
-        ]">{{ item.name }}</span>
+        ]":style="getFileStyle(item)">{{ item.name }}</span>
         <span v-if="item.sizeFormatted && !isFolder(item)" class="text-[9px] text-gray-500 mt-0.5">{{ item.sizeFormatted }}</span>
         <div v-if="item.tags && item.tags.length > 0" class="flex gap-0.5 mt-1">
           <span
@@ -395,7 +398,7 @@ const isFocused = (itemId: string) => {
         <span :class="[
           'text-[11px] flex-1 truncate',
           isFolder(item) && 'font-bold'
-        ]">{{ item.name }}</span>
+        ]":style="getFileStyle(item)">{{ item.name }}</span>
 
         <!-- Action Icons (visible on hover, selection or focus) -->
         <div
@@ -513,7 +516,7 @@ const isFocused = (itemId: string) => {
                 <span :class="[
                   'truncate',
                   isFolder(item) && 'font-bold'
-                ]">{{ item.name }}</span>
+                ]":style="getFileStyle(item)">{{ item.name }}</span>
               </div>
             </td>
             <td class="px-3 py-1.5 text-gray-600">{{ item.modified }}</td>

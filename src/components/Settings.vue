@@ -4,11 +4,19 @@ import { invoke } from '@tauri-apps/api/core'
 import type { AppConfig } from '../types'
 import { useTheme } from '../composables/useTheme'
 import { useVault } from '../composables/useVault'
+import SettingsFileColors from './SettingsFileColors.vue'
+
+const props = withDefaults(defineProps<{
+  initialTab?: 'general' | 'colors'
+}>(), {
+  initialTab: 'general'
+})
 
 const emit = defineEmits<{
   close: []
 }>()
 
+const currentTab = ref<'general' | 'colors'>(props.initialTab)
 const config = ref<AppConfig>({
   filesystem_backend: 'real',
   show_hidden_files: false,
@@ -262,7 +270,28 @@ const getThemeDescription = (theme: string): string => {
       </div>
 
       <!-- Content -->
-      <div class="settings-content">
+      <div class="flex border-b border-[#ACA899] bg-[#ECE9D8] px-2 pt-2 gap-1">
+        <button 
+          @click="currentTab = 'general'"
+          :class="[
+            'px-4 py-1.5 rounded-t text-sm border-t border-l border-r border-[#ACA899] mb-[-1px] z-10',
+            currentTab === 'general' ? 'bg-white font-medium border-b-white pb-2' : 'bg-[#E3E3E3] hover:bg-[#F0F0F0]'
+          ]"
+        >
+          General
+        </button>
+        <button 
+          @click="currentTab = 'colors'"
+          :class="[
+            'px-4 py-1.5 rounded-t text-sm border-t border-l border-r border-[#ACA899] mb-[-1px] z-10',
+            currentTab === 'colors' ? 'bg-white font-medium border-b-white pb-2' : 'bg-[#E3E3E3] hover:bg-[#F0F0F0]'
+          ]"
+        >
+          File Colors
+        </button>
+      </div>
+
+      <div class="settings-content bg-white" v-if="currentTab === 'general'">
         <!-- File System Backend -->
         <div class="setting-section">
           <h3 class="section-title">File System</h3>
@@ -440,6 +469,8 @@ const getThemeDescription = (theme: string): string => {
           {{ message.text }}
         </div>
       </div>
+
+      <SettingsFileColors v-if="currentTab === 'colors'" />
 
       <!-- Buttons -->
       <div class="button-bar">

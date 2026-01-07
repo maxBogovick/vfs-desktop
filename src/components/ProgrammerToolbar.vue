@@ -56,5 +56,15 @@ const emit = defineEmits<Emits>();
       <span class="text-[14px]">🌐</span>
       <span>FTP</span>
     </button>
+
+    <!-- File Colors Button -->
+    <button
+      @click="emit('open-file-colors')"
+      class="flex items-center gap-1 px-2 py-1 text-[11px] border rounded bg-[#ECE9D8] border-[#919B9C] hover:bg-[#C1D2EE] hover:border-[#0A246A]"
+      title="Configure File Colors"
+    >
+      <span class="text-[14px]">🎨</span>
+      <span>Colors</span>
+    </button>
   </div>
 </template>

@@ -13,6 +13,7 @@ export interface FileItem {
   size?: number;
   sizeFormatted?: string;
   modified?: string;
+  modifiedTimestamp?: number;
   created?: string;
   accessed?: string;
   free?: string;
