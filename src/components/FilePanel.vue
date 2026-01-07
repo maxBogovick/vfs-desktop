@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue';
+import { ref, watch, computed, onMounted, onUnmounted } from 'vue';
 import PanelToolbar from './PanelToolbar.vue';
 import FileList from './FileList.vue';
 import { useFileSystem } from '../composables/useFileSystem';
@@ -10,6 +10,7 @@ import { useDialogs } from '../composables/useDialogs';
 import { useContextMenu } from '../composables/useContextMenu';
 import { useProgrammerMode } from '../composables/useProgrammerMode';
 import { useUIState } from '../composables/useUIState';
+import { useGlobalRefresh } from '../composables/useGlobalRefresh';
 import { registerActivePanelMethods, type ActivePanelMethods } from '../composables/useDualPanel';
 import type { Tab, ViewMode, ActivePanel, FileItem, FileSystemBackend } from '../types';
 
@@ -155,8 +156,12 @@ const refreshCurrentDirectory = async () => {
   await loadDirectory(pathString, props.panelFilesystem);
 };
 
+const { refreshAllPanels } = useGlobalRefresh();
+
 // File Operations
-const fileOps = useFileOperations(refreshCurrentDirectory);
+const fileOps = useFileOperations(async () => {
+  await refreshAllPanels(currentPath.value);
+});
 
 // Inline File Creator state (per panel)
 const showInlineCreator = ref(false);
@@ -190,6 +195,14 @@ watch(currentPath, async () => {
     focusedId.value = null;
   }
 }, { immediate: true });
+
+onMounted(() => {
+  window.addEventListener('vf-refresh-all', refreshCurrentDirectory);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('vf-refresh-all', refreshCurrentDirectory);
+});
 
 // Navigation: Update tab path
 const updateTabPath = (newPath: string[]) => {

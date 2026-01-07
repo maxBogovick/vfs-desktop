@@ -50,6 +50,7 @@ import { useTemplates } from './composables/useTemplates';
 import { useTerminal } from './composables/useTerminal';
 import { useTheme } from './composables/useTheme';
 import { useFileColoring } from './composables/useFileColoring';
+import { useGlobalRefresh } from './composables/useGlobalRefresh';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type {FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange, FileSystemBackend} from './types';
@@ -276,8 +277,17 @@ const refreshCurrentDirectory = async () => {
   await loadDirectory(pathString);
 };
 
+// Handle global refresh event
+const handleGlobalRefresh = async () => {
+  if (!isDualMode.value) {
+    await refreshCurrentDirectory();
+  }
+};
+
 // File Operations
-const fileOps = useFileOperations(refreshCurrentDirectory);
+const fileOps = useFileOperations(async () => {
+  await refreshAllPanels(currentPath.value);
+});
 
 // Context Menu (global)
 const { contextMenu, showContextMenu, closeContextMenu } = useContextMenu();
@@ -285,17 +295,12 @@ const { contextMenu, showContextMenu, closeContextMenu } = useContextMenu();
 // Grouping
 const { groupBy, groupByOptions, groupFiles } = useGrouping();
 
+// Global Refresh
+const { refreshAllPanels } = useGlobalRefresh();
+
 // Batch Operations (with auto-refresh callback)
 const { queueBatchRename, queueBatchAttributeChange, hasOperations } = useBatchOperations(async () => {
-  // Auto-refresh directory after operation completes
-  if (isDualMode.value) {
-    const methods = getActivePanelMethods();
-    if (methods) {
-      await methods.refreshCurrentDirectory();
-    }
-  } else {
-    await refreshCurrentDirectory();
-  }
+  await refreshAllPanels([]);
 });
 
 // Programmer Mode
@@ -1326,6 +1331,7 @@ const updateSystemStats = async () => {
 // Click outside handler
 onMounted(async () => {
   document.addEventListener('click', closeContextMenu);
+  window.addEventListener('vf-refresh-all', handleGlobalRefresh);
 
   // Check vault status FIRST
   await vault.checkStatus();
