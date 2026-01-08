@@ -272,6 +272,13 @@ const handleItemContextMenu = (item: FileItem, event: MouseEvent) => {
   showContextMenu(item, event);
 };
 
+const handleBackgroundContextMenu = (event: MouseEvent) => {
+  if (!props.isActive) {
+    emit('activate');
+  }
+  showContextMenu(null, event);
+};
+
 // Handle panel activation
 const handlePanelClick = () => {
   if (!props.isActive) {
@@ -744,6 +751,7 @@ watch(() => props.isActive, (isActive) => {
         @item-click="handleItemClickWithActivation"
         @item-double-click="handleItemDoubleClick"
         @item-context-menu="handleItemContextMenu"
+        @background-context-menu="handleBackgroundContextMenu"
         @drag-start="handleDragStart"
         @drag-over="handleDragOver"
         @drag-leave="handleDragLeave"

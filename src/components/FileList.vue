@@ -38,6 +38,7 @@ interface Emits {
   (e: 'createFile', payload: { name: string; isFolder: boolean; templateId?: string }): void;
   (e: 'batchCreateFiles', names: string[]): void;
   (e: 'cancelInlineCreator'): void;
+  (e: 'backgroundContextMenu', event: MouseEvent): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -115,7 +116,10 @@ const isFocused = (itemId: string) => {
 </script>
 
 <template>
-  <div class="flex-1 p-4 overflow-y-auto bg-[var(--vf-surface-default)] min-h-full relative">
+  <div 
+    class="flex-1 p-4 overflow-y-auto bg-[var(--vf-surface-default)] min-h-full relative"
+    @contextmenu.prevent="emit('backgroundContextMenu', $event)"
+  >
     <!-- Inline File Creator -->
     <InlineFileCreator
       :is-open="showInlineCreator"
@@ -188,7 +192,7 @@ const isFocused = (itemId: string) => {
             @drop.stop="emit('drop', item, $event)"
             @click="emit('itemClick', item, $event)"
             @dblclick="emit('itemDoubleClick', item)"
-            @contextmenu="emit('itemContextMenu', item, $event)"
+            @contextmenu.stop="emit('itemContextMenu', item, $event)"
             :class="[
               'flex flex-col items-center justify-center p-3 rounded cursor-pointer transition-all relative',
               selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)] border border-transparent hover:border-[var(--vf-surface-hover)]',
@@ -203,6 +207,67 @@ const isFocused = (itemId: string) => {
               @click.stop="emit('toggleSelection', item)"
               class="absolute top-1 left-1 w-3 h-3 cursor-pointer"
             />
+
+            <!-- Action Icons (top-right corner, visible on selection or focus) -->
+            <div
+              v-if="selectedIds.has(item.id) || isFocused(item.id)"
+              class="absolute top-1 right-1 flex gap-0.5 bg-white/90 rounded p-0.5 z-10"
+              @click.stop
+            >
+              <button
+                @click="emit('openTerminal', item)"
+                class="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                title="Open in Terminal"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <polyline points="4 17 10 11 4 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line x1="12" y1="19" x2="20" y2="19" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button
+                @click="emit('copyItem', item)"
+                class="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                title="Copy (Ctrl+C)"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-width="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke-width="2"/>
+                </svg>
+              </button>
+              <button
+                @click="emit('cutItem', item)"
+                class="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                title="Cut (Ctrl+X)"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="6" cy="6" r="3" stroke-width="2"/>
+                  <circle cx="6" cy="18" r="3" stroke-width="2"/>
+                  <line x1="20" y1="4" x2="8.12" y2="15.88" stroke-width="2"/>
+                  <line x1="14.47" y1="14.48" x2="20" y2="20" stroke-width="2"/>
+                </svg>
+              </button>
+              <button
+                @click="emit('renameItem', item)"
+                class="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                title="Rename (F2)"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke-width="2"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke-width="2"/>
+                </svg>
+              </button>
+              <button
+                @click="emit('deleteItem', item)"
+                class="p-0.5 hover:bg-red-100 rounded transition-colors text-red-600"
+                title="Delete (Del)"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <polyline points="3 6 5 6 21 6" stroke-width="2"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke-width="2"/>
+                </svg>
+              </button>
+            </div>
+
             <div class="text-4xl mb-2">{{ getFileIcon(item) }}</div>
             <div class="text-[10px] text-center break-words w-full":style="getFileStyle(item)">{{ item.name }}</div>
           </div>
@@ -221,7 +286,7 @@ const isFocused = (itemId: string) => {
             @drop.stop="emit('drop', item, $event)"
             @click="emit('itemClick', item, $event)"
             @dblclick="emit('itemDoubleClick', item)"
-            @contextmenu="emit('itemContextMenu', item, $event)"
+            @contextmenu.stop="emit('itemContextMenu', item, $event)"
             :class="[
               'flex items-center gap-3 px-2 py-1 rounded cursor-pointer transition-all',
               selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',
@@ -238,6 +303,67 @@ const isFocused = (itemId: string) => {
             />
             <div class="text-lg flex-shrink-0">{{ getFileIcon(item) }}</div>
             <div class="flex-1 min-w-0 text-[11px]":style="getFileStyle(item)">{{ item.name }}</div>
+
+            <!-- Action Icons (visible on hover, selection or focus) -->
+            <div
+              v-if="selectedIds.has(item.id) || isFocused(item.id)"
+              class="flex gap-1 flex-shrink-0"
+              @click.stop
+            >
+              <button
+                @click="emit('openTerminal', item)"
+                class="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                title="Open in Terminal"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <polyline points="4 17 10 11 4 5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <line x1="12" y1="19" x2="20" y2="19" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+              </button>
+              <button
+                @click="emit('copyItem', item)"
+                class="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                title="Copy (Ctrl+C)"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2" stroke-width="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" stroke-width="2"/>
+                </svg>
+              </button>
+              <button
+                @click="emit('cutItem', item)"
+                class="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                title="Cut (Ctrl+X)"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <circle cx="6" cy="6" r="3" stroke-width="2"/>
+                  <circle cx="6" cy="18" r="3" stroke-width="2"/>
+                  <line x1="20" y1="4" x2="8.12" y2="15.88" stroke-width="2"/>
+                  <line x1="14.47" y1="14.48" x2="20" y2="20" stroke-width="2"/>
+                </svg>
+              </button>
+              <button
+                @click="emit('renameItem', item)"
+                class="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                title="Rename (F2)"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke-width="2"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke-width="2"/>
+                </svg>
+              </button>
+              <button
+                @click="emit('deleteItem', item)"
+                class="p-0.5 hover:bg-red-100 rounded transition-colors text-red-600"
+                title="Delete (Del)"
+              >
+                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <polyline points="3 6 5 6 21 6" stroke-width="2"/>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" stroke-width="2"/>
+                </svg>
+              </button>
+            </div>
+
             <div v-if="item.modified" class="text-[10px] text-gray-500 flex-shrink-0 hidden sm:block">{{ item.modified }}</div>
             <div v-if="item.sizeFormatted" class="text-[10px] text-gray-500 flex-shrink-0 w-20 text-right">{{ item.sizeFormatted }}</div>
             <div v-if="item.tags && item.tags.length > 0" class="flex gap-1 flex-shrink-0">
@@ -263,7 +389,7 @@ const isFocused = (itemId: string) => {
         @drop.stop="emit('drop', item, $event)"
         @click="emit('itemClick', item, $event)"
         @dblclick="emit('itemDoubleClick', item)"
-        @contextmenu="emit('itemContextMenu', item, $event)"
+        @contextmenu.stop="emit('itemContextMenu', item, $event)"
         :class="[
           'flex flex-col items-center justify-center p-3 rounded cursor-pointer transition-all relative',
           selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)] border border-transparent hover:border-[var(--vf-surface-hover)]',
@@ -372,7 +498,7 @@ const isFocused = (itemId: string) => {
         @drop.stop="emit('drop', item, $event)"
         @click="emit('itemClick', item, $event)"
         @dblclick="emit('itemDoubleClick', item)"
-        @contextmenu="emit('itemContextMenu', item, $event)"
+        @contextmenu.stop="emit('itemContextMenu', item, $event)"
         :class="[
           'flex items-center gap-3 px-3 py-2 rounded cursor-pointer transition-all group',
           selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',
@@ -502,7 +628,7 @@ const isFocused = (itemId: string) => {
             @drop="emit('drop', item, $event)"
             @click="emit('itemClick', item, $event)"
             @dblclick="emit('itemDoubleClick', item)"
-            @contextmenu="emit('itemContextMenu', item, $event)"
+            @contextmenu.stop="emit('itemContextMenu', item, $event)"
             :class="[
               'cursor-pointer transition-all',
               selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',

@@ -54,6 +54,7 @@ import { useTheme } from './composables/useTheme';
 import { useFileColoring } from './composables/useFileColoring';
 import { useGlobalRefresh } from './composables/useGlobalRefresh';
 import { useWidgets } from './composables/useWidgets';
+import { useClipboard } from './composables/useClipboard';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type {FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange, FileSystemBackend} from './types';
@@ -303,6 +304,9 @@ const { refreshAllPanels } = useGlobalRefresh();
 
 // Widgets
 const { isWidgetActive, toggleWidget, showWidgetSelector, closeWidgetSelector, widgets } = useWidgets();
+
+// Clipboard
+const { hasClipboardItems } = useClipboard();
 
 // Batch Operations (with auto-refresh callback)
 const { queueBatchRename, queueBatchAttributeChange, hasOperations } = useBatchOperations(async () => {
@@ -1167,6 +1171,25 @@ const contextMenuHandlers = {
   openTerminal: () => {
     if (contextMenu.value?.item) {
       handleOpenTerminal(contextMenu.value.item);
+    } else {
+       // Background click - open current directory
+       const { openTerminal } = useFileSystem();
+       const { success, error } = useNotifications();
+       
+       let path = '';
+       if (isDualMode.value) {
+          path = '/' + activePanelPath.value.join('/');
+       } else {
+          path = '/' + currentPath.value.join('/');
+       }
+
+       if (path) {
+           openTerminal(path).then(() => {
+               success('Terminal opened', `Opened terminal in ${path}`);
+           }).catch(err => {
+               error('Failed to open terminal', err instanceof Error ? err.message : 'Unknown error');
+           });
+       }
     }
   },
   properties: () => {
@@ -1220,6 +1243,35 @@ const contextMenuHandlers = {
         showBatchAttributeDialog.value = true;
       }
     }
+  },
+  refresh: () => {
+     if (isDualMode.value) {
+        getActivePanelMethods()?.handleRefresh();
+     } else {
+        handleRefresh();
+     }
+  },
+  newFolder: () => {
+     if (isDualMode.value) {
+        getActivePanelMethods()?.handleNewFolder();
+     } else {
+        fileOps.handleNewFolder(currentPath.value, showInput);
+     }
+  },
+  newFile: () => {
+     if (isDualMode.value) {
+        getActivePanelMethods()?.handleNewFile();
+     } else {
+        inlineCreatorMode.value = 'file';
+        showInlineCreator.value = true;
+     }
+  },
+  selectAll: () => {
+     if (isDualMode.value) {
+        getActivePanelMethods()?.selectAll();
+     } else {
+        handleSelectAll();
+     }
   },
 };
 
@@ -1568,6 +1620,7 @@ onMounted(async () => {
               @item-click="(item, event) => handleItemClick(item, files, event)"
               @item-double-click="handleItemDoubleClick"
               @item-context-menu="handleContextMenu"
+              @background-context-menu="(event) => showContextMenu(null, event)"
               @drag-start="handleDragStart"
               @drag-over="handleDragOver"
               @drag-leave="handleDragLeave"
@@ -1631,6 +1684,7 @@ onMounted(async () => {
         :y="contextMenu.y"
         :item="contextMenu.item"
         :selected-count="selectedCount"
+        :has-clipboard-content="hasClipboardItems"
         @open="contextMenuHandlers.open"
         @edit="contextMenuHandlers.edit"
         @copy="contextMenuHandlers.copy"
@@ -1643,6 +1697,10 @@ onMounted(async () => {
         @properties="contextMenuHandlers.properties"
         @batch-rename="contextMenuHandlers.batchRename"
         @batch-attributes="contextMenuHandlers.batchAttributes"
+        @refresh="contextMenuHandlers.refresh"
+        @new-folder="contextMenuHandlers.newFolder"
+        @new-file="contextMenuHandlers.newFile"
+        @select-all="contextMenuHandlers.selectAll"
         @close="closeContextMenu"
     />
 
