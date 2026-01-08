@@ -46,14 +46,80 @@ impl FileSpecification for AndSpecification {
     }
 }
 
+struct NameContainsSpec(String);
+impl FileSpecification for NameContainsSpec {
+    fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool {
+        item.name.to_lowercase().contains(&self.0.to_lowercase())
+    }
+}
+// Спецификация: расширение файла
+struct ExtensionSpec(String);
+impl FileSpecification for ExtensionSpec {
+    fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool {
+        item.name.to_lowercase().ends_with(&self.0.to_lowercase())
+    }
+}
+pub struct SizeSpec {
+    min_bytes: Option<u64>,
+    max_bytes: Option<u64>,
+}
+impl SizeSpec {
+    pub fn new(min_bytes: Option<u64>, max_bytes: Option<u64>) -> Self {
+        Self { min_bytes, max_bytes }
+    }
+}
+impl FileSpecification for SizeSpec {
+    fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool {
+        // 🎯 ВАША ЗАДАЧА:
+        // 1. Получите размер из item.size (это Option<u64>)
+        //    Если size = None, что вернуть? (подсказка: false, т.к. размер неизвестен)
+        // 2. Проверьте минимальную границу:
+        //    if let Some(min) = self.min_bytes {
+        //        if size < min { return false; }
+        //    }
+        // 3. Проверьте максимальную границу:
+        //    if let Some(max) = self.max_bytes {
+        //        if size > max { return false; }
+        //    }
+        // 4. Если оба условия прошли, верните true
+        // Альтернативный подход (короче):
+        // let size = item.size?;  // вернет false если None
+        // self.min_bytes.map_or(true, |min| size >= min) &&
+        // self.max_bytes.map_or(true, |max| size <= max)
+        match item.size {
+            None => false,
+            Some(m) => {
+                if self.min_bytes.is_none() && self.max_bytes.is_none() {
+                    true
+                } else if let Some(min) = self.min_bytes {
+                    if let Some(max) = self.max_bytes {
+                        m >= min && m <= max
+                    } else {
+                        m >= min
+                    }
+                } else if let Some(max) = self.max_bytes {
+                    m <= max
+                } else {
+                    false
+                }
+            }
+        }
+        // Option<u64> может быть:
+        /*match item.size {
+            Some(size) => println!("Размер: {} байт", size),
+            None => println!("Размер неизвестен (директория или ошибка)"),
+        }*/
+    }
+}
+
 
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::core::search::enums::NameSpecification;
-use super::*;
     use crate::core::search::enums::TextMatchMode;
-
+    use crate::core::search::specification::SizeSpec;
     // Тестовая спецификация, которая всегда возвращает true
     struct AlwaysTrueSpec;
 
@@ -93,19 +159,7 @@ use super::*;
         assert!(spec.is_satisfied_by(&file));
     }
     // Спецификация: имя содержит строку
-    struct NameContainsSpec(String);
-    impl FileSpecification for NameContainsSpec {
-        fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool {
-            item.name.to_lowercase().contains(&self.0.to_lowercase())
-        }
-    }
-    // Спецификация: расширение файла
-    struct ExtensionSpec(String);
-    impl FileSpecification for ExtensionSpec {
-        fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool {
-            item.name.to_lowercase().ends_with(&self.0.to_lowercase())
-        }
-    }
+
     #[test]
     fn test_and_empty_returns_true() {
         // Пустая AND-спецификация должна пропускать все
@@ -153,16 +207,11 @@ use super::*;
     }
     #[test]
     fn test_and_three_conditions() {
-        struct SizeSpec(u64);
-        impl FileSpecification for SizeSpec {
-            fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool {
-                item.size.map_or(false, |s| s >= self.0)
-            }
-        }
+
         let specs: Vec<Box<dyn FileSpecification>> = vec![
             Box::new(NameContainsSpec("report".into())),
             Box::new(ExtensionSpec(".pdf".into())),
-            Box::new(SizeSpec(1024)),
+            Box::new(SizeSpec { min_bytes: Some(0), max_bytes: Some(2048) }),
         ];
         let spec = AndSpecification::new(specs);
         let mut file = create_test_file("monthly_report.pdf");
@@ -356,12 +405,82 @@ use super::*;
             TextMatchMode::Contains
         ).unwrap();
         assert!(spec.is_satisfied_by(&create_test_file("test.txt")))
-    }#[test]
+    }
+    #[test]
     fn wrong_contains_search() {
         let spec = NameSpecification::new(
             "ts".to_string(),
             TextMatchMode::Contains
         ).unwrap();
         assert!(!spec.is_satisfied_by(&create_test_file("test.txt")))
+    }
+
+
+    fn create_file_with_size(name: &str, size: Option<u64>) -> FileSystemEntry {
+        FileSystemEntry {
+            path: format!("/test/{}", name),
+            name: name.to_string(),
+            is_dir: false,
+            is_file: true,
+            size,
+            modified: Some(1234567890),
+            created: Some(1234567890),
+            accessed: Some(1234567890),
+        }
+    }
+    #[test]
+    fn test_size_no_limits() {
+        let spec = SizeSpec::new(None, None);
+        assert!(spec.is_satisfied_by(&create_file_with_size("small.txt", Some(100))));
+        assert!(spec.is_satisfied_by(&create_file_with_size("large.txt", Some(1_000_000))));
+    }
+    #[test]
+    fn test_size_min_only() {
+        let spec = SizeSpec::new(Some(1000), None);
+        assert!(spec.is_satisfied_by(&create_file_with_size("big.txt", Some(5000))));
+        assert!(spec.is_satisfied_by(&create_file_with_size("exact.txt", Some(1000))));
+        assert!(!spec.is_satisfied_by(&create_file_with_size("small.txt", Some(500))));
+    }
+    #[test]
+    fn test_size_max_only() {
+        let spec = SizeSpec::new(None, Some(1000));
+        assert!(spec.is_satisfied_by(&create_file_with_size("small.txt", Some(500))));
+        assert!(spec.is_satisfied_by(&create_file_with_size("exact.txt", Some(1000))));
+        assert!(!spec.is_satisfied_by(&create_file_with_size("big.txt", Some(5000))));
+    }
+    #[test]
+    fn test_size_range() {
+        let spec = SizeSpec::new(Some(1000), Some(5000));
+        assert!(spec.is_satisfied_by(&create_file_with_size("good1.txt", Some(1000))));
+        assert!(spec.is_satisfied_by(&create_file_with_size("good2.txt", Some(3000))));
+        assert!(spec.is_satisfied_by(&create_file_with_size("good3.txt", Some(5000))));
+        assert!(!spec.is_satisfied_by(&create_file_with_size("too_small.txt", Some(999))));
+        assert!(!spec.is_satisfied_by(&create_file_with_size("too_big.txt", Some(5001))));
+    }
+    #[test]
+    fn test_size_no_size_info() {
+        let spec = SizeSpec::new(Some(1000), None);
+        // Файл без информации о размере не должен проходить фильтр
+        assert!(!spec.is_satisfied_by(&create_file_with_size("unknown.txt", None)));
+    }
+    #[test]
+    fn test_size_realistic_small_files() {
+        // Маленькие файлы: до 100KB
+        let spec = SizeSpec::new(None, Some(100 * 1024));
+        assert!(spec.is_satisfied_by(&create_file_with_size("config.json", Some(1024))));
+        assert!(spec.is_satisfied_by(&create_file_with_size("readme.txt", Some(50 * 1024))));
+        assert!(!spec.is_satisfied_by(&create_file_with_size("video.mp4", Some(10 * 1024 * 1024))));
+    }
+    #[test]
+    fn test_size_realistic_documents() {
+        // Документы: от 10KB до 10MB
+        let spec = SizeSpec::new(
+            Some(10 * 1024),
+            Some(10 * 1024 * 1024)
+        );
+        assert!(!spec.is_satisfied_by(&create_file_with_size("tiny.txt", Some(1024))));
+        assert!(spec.is_satisfied_by(&create_file_with_size("document.pdf", Some(500 * 1024))));
+        assert!(spec.is_satisfied_by(&create_file_with_size("presentation.pptx", Some(5 * 1024 * 1024))));
+        assert!(!spec.is_satisfied_by(&create_file_with_size("movie.mkv", Some(1024 * 1024 * 1024))));
     }
 }
