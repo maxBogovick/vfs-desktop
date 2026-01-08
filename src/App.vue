@@ -416,6 +416,24 @@ const handleContextMenu = (item: FileItem, event: MouseEvent) => {
   showContextMenu(item, event);
 };
 
+const handleItemClickWrapper = (item: FileItem, event: MouseEvent) => {
+  handleItemClick(item, processedFiles.value, event);
+};
+
+const handleBackgroundContextMenu = (event: MouseEvent) => {
+  showContextMenu(null, event);
+};
+
+// New context menu handlers
+const handleNewFolder = () => {
+  fileOps.handleNewFolder(currentPath.value, showInput);
+};
+
+const handleNewFile = () => {
+  inlineCreatorMode.value = 'file';
+  showInlineCreator.value = true;
+};
+
 // ИСПРАВЛЕНИЕ: Обновленная функция handleDragStart
 const handleDragStart = (item: FileItem, event: DragEvent) => {
   // Определяем, какие элементы нужно перетаскивать
@@ -1565,9 +1583,10 @@ onMounted(async () => {
               :show-inline-creator="showInlineCreator"
               :inline-creator-mode="inlineCreatorMode"
               :current-path="currentPath"
-              @item-click="(item, event) => handleItemClick(item, files, event)"
+              @item-click="handleItemClickWrapper"
               @item-double-click="handleItemDoubleClick"
               @item-context-menu="handleContextMenu"
+              @background-context-menu="handleBackgroundContextMenu"
               @drag-start="handleDragStart"
               @drag-over="handleDragOver"
               @drag-leave="handleDragLeave"
@@ -1643,6 +1662,10 @@ onMounted(async () => {
         @properties="contextMenuHandlers.properties"
         @batch-rename="contextMenuHandlers.batchRename"
         @batch-attributes="contextMenuHandlers.batchAttributes"
+        @new-folder="handleNewFolder"
+        @new-file="handleNewFile"
+        @refresh="handleRefresh"
+        @select-all="handleSelectAll"
         @close="closeContextMenu"
     />
 

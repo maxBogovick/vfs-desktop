@@ -23,6 +23,7 @@ interface Emits {
   (e: 'itemClick', item: FileItem, event: MouseEvent): void;
   (e: 'itemDoubleClick', item: FileItem): void;
   (e: 'itemContextMenu', item: FileItem, event: MouseEvent): void;
+  (e: 'backgroundContextMenu', event: MouseEvent): void;
   (e: 'dragStart', item: FileItem, event: DragEvent): void;
   (e: 'dragOver', item: FileItem, event: DragEvent): void;
   (e: 'dragLeave', item: FileItem): void;
@@ -115,7 +116,10 @@ const isFocused = (itemId: string) => {
 </script>
 
 <template>
-  <div class="flex-1 p-4 overflow-y-auto bg-[var(--vf-surface-default)] min-h-full relative">
+  <div
+    class="flex-1 p-4 overflow-y-auto bg-[var(--vf-surface-default)] min-h-full relative"
+    @contextmenu.prevent.stop="emit('backgroundContextMenu', $event)"
+  >
     <!-- Inline File Creator -->
     <InlineFileCreator
       :is-open="showInlineCreator"
@@ -188,7 +192,7 @@ const isFocused = (itemId: string) => {
             @drop.stop="emit('drop', item, $event)"
             @click="emit('itemClick', item, $event)"
             @dblclick="emit('itemDoubleClick', item)"
-            @contextmenu="emit('itemContextMenu', item, $event)"
+            @contextmenu.stop="emit('itemContextMenu', item, $event)"
             :class="[
               'flex flex-col items-center justify-center p-3 rounded cursor-pointer transition-all relative',
               selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)] border border-transparent hover:border-[var(--vf-surface-hover)]',
@@ -221,7 +225,7 @@ const isFocused = (itemId: string) => {
             @drop.stop="emit('drop', item, $event)"
             @click="emit('itemClick', item, $event)"
             @dblclick="emit('itemDoubleClick', item)"
-            @contextmenu="emit('itemContextMenu', item, $event)"
+            @contextmenu.stop="emit('itemContextMenu', item, $event)"
             :class="[
               'flex items-center gap-3 px-2 py-1 rounded cursor-pointer transition-all',
               selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',
@@ -263,7 +267,7 @@ const isFocused = (itemId: string) => {
         @drop.stop="emit('drop', item, $event)"
         @click="emit('itemClick', item, $event)"
         @dblclick="emit('itemDoubleClick', item)"
-        @contextmenu="emit('itemContextMenu', item, $event)"
+        @contextmenu.stop="emit('itemContextMenu', item, $event)"
         :class="[
           'flex flex-col items-center justify-center p-3 rounded cursor-pointer transition-all relative',
           selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)] border border-transparent hover:border-[var(--vf-surface-hover)]',
@@ -370,12 +374,11 @@ const isFocused = (itemId: string) => {
         @dragover.stop="emit('dragOver', item, $event)"
         @dragleave="emit('dragLeave', item)"
         @drop.stop="emit('drop', item, $event)"
-        @click="emit('itemClick', item, $event)"
-        @dblclick="emit('itemDoubleClick', item)"
-        @contextmenu="emit('itemContextMenu', item, $event)"
-        :class="[
-          'flex items-center gap-3 px-3 py-2 rounded cursor-pointer transition-all group',
-          selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',
+                    @click="emit('itemClick', item, $event)"
+                    @dblclick="emit('itemDoubleClick', item)"
+                    @contextmenu.stop="emit('itemContextMenu', item, $event)"
+                    :class="[
+                      'flex items-center gap-3 px-3 py-2 rounded cursor-pointer transition-all group',          selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)] border border-[var(--vf-accent-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',
           isFocused(item.id) && !selectedIds.has(item.id) && 'ring-2 ring-[var(--vf-accent-primary)] ring-inset',
           isDragTarget(item.id) && 'ring-2 ring-blue-400 bg-blue-50',
           isBeingDragged(item.id) && 'opacity-50',
@@ -502,7 +505,7 @@ const isFocused = (itemId: string) => {
             @drop="emit('drop', item, $event)"
             @click="emit('itemClick', item, $event)"
             @dblclick="emit('itemDoubleClick', item)"
-            @contextmenu="emit('itemContextMenu', item, $event)"
+            @contextmenu.stop="emit('itemContextMenu', item, $event)"
             :class="[
               'cursor-pointer transition-all',
               selectedIds.has(item.id) ? 'bg-[var(--vf-surface-hover)]' : 'hover:bg-[var(--vf-surface-selected)]',
