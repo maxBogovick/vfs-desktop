@@ -10,6 +10,7 @@ interface Emits {
   (e: 'open-ftp'): void;
   (e: 'open-file-colors'): void;
   (e: 'toggle-resource-monitor'): void;
+  (e: 'open-widgets'): void;
 }
 
 defineProps<Props>();
@@ -77,6 +78,16 @@ const emit = defineEmits<Emits>();
     >
       <span class="text-[14px]">🎨</span>
       <span>Colors</span>
+    </button>
+
+    <!-- Widgets Button -->
+    <button
+      @click="emit('open-widgets')"
+      class="flex items-center gap-1 px-2 py-1 text-[11px] border rounded bg-[#ECE9D8] border-[#919B9C] hover:bg-[#C1D2EE] hover:border-[#0A246A]"
+      title="Open Widgets"
+    >
+      <span class="text-[14px]">🧩</span>
+      <span>Widgets</span>
     </button>
   </div>
 </template>

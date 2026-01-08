@@ -24,7 +24,8 @@ import ProgrammerToolbar from './components/ProgrammerToolbar.vue';
 import PanelToolbar from './components/PanelToolbar.vue';
 import TextEditor from './components/TextEditor.vue';
 import VaultOverlay from './components/VaultOverlay.vue';
-import ResourceMonitor from './components/ResourceMonitor.vue';
+import WidgetLayer from './components/WidgetLayer.vue';
+import WidgetSelector from './components/WidgetSelector.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useVault } from './composables/useVault';
@@ -52,6 +53,7 @@ import { useTerminal } from './composables/useTerminal';
 import { useTheme } from './composables/useTheme';
 import { useFileColoring } from './composables/useFileColoring';
 import { useGlobalRefresh } from './composables/useGlobalRefresh';
+import { useWidgets } from './composables/useWidgets';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
 import type {FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange, FileSystemBackend} from './types';
@@ -299,6 +301,9 @@ const { groupBy, groupByOptions, groupFiles } = useGrouping();
 // Global Refresh
 const { refreshAllPanels } = useGlobalRefresh();
 
+// Widgets
+const { isWidgetActive, toggleWidget, showWidgetSelector, closeWidgetSelector, widgets } = useWidgets();
+
 // Batch Operations (with auto-refresh callback)
 const { queueBatchRename, queueBatchAttributeChange, hasOperations } = useBatchOperations(async () => {
   await refreshAllPanels([]);
@@ -328,7 +333,6 @@ const batchOperationFiles = ref<FileItem[]>([]);
 const showTextEditor = ref(false);
 const editorFile = ref<FileItem | null>(null);
 const editorFileFs = ref<string | undefined>(undefined);
-const isResourceMonitorVisible = ref(false);
 
 // Inline File Creator state
 const showInlineCreator = ref(false);
@@ -815,6 +819,20 @@ const shortcuts = createKeyboardShortcuts(
           handleCloseEditor();
           return;
         }
+
+        // Widget Selector
+        if (showWidgetSelector.value) {
+          showWidgetSelector.value = false;
+          return;
+        }/*
+
+        // Active Widgets
+        // Close all active widgets
+        const activeWidgets = widgets.value.filter(w => w.active);
+        if (activeWidgets.length > 0) {
+          activeWidgets.forEach(w => toggleWidget(w.id));
+          return;
+        }*/
 
         // 5. Notifications
         if (activeNotifications.value.length > 0) {
@@ -1482,8 +1500,9 @@ onMounted(async () => {
         @toggle-terminal="toggleTerminal"
         @batch-rename="showBatchRenameDialog = true"
         @open-ftp="() => { /* TODO: implement FTP */ }"
-        @toggle-resource-monitor="isResourceMonitorVisible = !isResourceMonitorVisible"
+        @toggle-resource-monitor="toggleWidget('resource-monitor')"
         @open-file-colors="() => { settingsInitialTab = 'colors'; showSettings = true; }"
+        @open-widgets="showWidgetSelector = true"
     />
 
     <!-- Main Content Area -->
@@ -1740,10 +1759,13 @@ onMounted(async () => {
     <!-- Vault Security Overlay -->
     <VaultOverlay />
 
-    <!-- Resource Monitor Overlay -->
-    <ResourceMonitor
-      :visible="isResourceMonitorVisible"
-      @close="isResourceMonitorVisible = false"
+    <!-- Dynamic Widget Layer -->
+    <WidgetLayer />
+
+    <!-- Widget Selector -->
+    <WidgetSelector
+      :is-open="showWidgetSelector"
+      @close="closeWidgetSelector"
     />
   </div>
 </template>

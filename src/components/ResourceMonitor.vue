@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import BaseWidget from './BaseWidget.vue';
 
 defineProps<{
   visible: boolean;
@@ -17,9 +18,6 @@ interface SystemStats {
 
 const stats = ref<SystemStats | null>(null);
 const intervalId = ref<number | null>(null);
-const dragging = ref(false);
-const position = ref({ x: 200, y: 150 });
-const offset = ref({ x: 0, y: 0 });
 
 const fetchStats = async () => {
   try {
@@ -37,55 +35,17 @@ onMounted(() => {
 onUnmounted(() => {
   if (intervalId.value) clearInterval(intervalId.value);
 });
-
-const startDrag = (e: MouseEvent) => {
-  dragging.value = true;
-  offset.value = {
-    x: e.clientX - position.value.x,
-    y: e.clientY - position.value.y
-  };
-  window.addEventListener('mousemove', onDrag);
-  window.addEventListener('mouseup', stopDrag);
-};
-
-const onDrag = (e: MouseEvent) => {
-  if (dragging.value) {
-    position.value = {
-      x: e.clientX - offset.value.x,
-      y: e.clientY - offset.value.y
-    };
-  }
-};
-
-const stopDrag = () => {
-  dragging.value = false;
-  window.removeEventListener('mousemove', onDrag);
-  window.removeEventListener('mouseup', stopDrag);
-};
 </script>
 
 <template>
-  <div
-    v-if="visible"
-    class="fixed z-50 bg-gray-800 border border-gray-600 rounded shadow-xl flex flex-col w-64 text-sm font-sans"
-    :style="{ top: `${position.y}px`, left: `${position.x}px` }"
+  <BaseWidget
+    :visible="visible"
+    title="System Monitor"
+    width="w-64"
+    :initial-position="{ x: 200, y: 150 }"
+    @close="$emit('close')"
   >
-    <!-- Header -->
-    <div
-      class="flex justify-between items-center px-3 py-2 bg-gray-700 cursor-move border-b border-gray-600 rounded-t select-none"
-      @mousedown="startDrag"
-    >
-      <span class="font-bold text-gray-200">System Monitor</span>
-      <button 
-        @click="$emit('close')" 
-        class="text-gray-400 hover:text-white hover:bg-gray-600 rounded px-1 transition-colors"
-      >
-        ✕
-      </button>
-    </div>
-
-    <!-- Content -->
-    <div class="p-4 space-y-4 text-gray-300">
+    <div class="p-4 space-y-4 text-[var(--vf-text-primary)]">
       <div v-if="stats">
         <!-- CPU Section -->
         <div>
@@ -101,7 +61,7 @@ const stopDrag = () => {
               {{ stats.cpu_percent.toFixed(1) }}%
             </span>
           </div>
-          <div class="w-full bg-gray-900 h-2 rounded-full overflow-hidden border border-gray-700">
+          <div class="w-full bg-[var(--vf-bg-tertiary)] h-2 rounded-full overflow-hidden border border-[var(--vf-border-default)]">
             <div
               class="h-full bg-blue-500 transition-all duration-500 ease-out"
               :style="{ width: `${Math.min(stats.cpu_percent, 100)}%` }"
@@ -116,7 +76,7 @@ const stopDrag = () => {
             <span class="text-purple-300">{{ stats.memory_mb.toFixed(0) }} MB</span>
           </div>
           <!-- Bar scaled to 512MB for visualization -->
-          <div class="w-full bg-gray-900 h-2 rounded-full overflow-hidden border border-gray-700">
+          <div class="w-full bg-[var(--vf-bg-tertiary)] h-2 rounded-full overflow-hidden border border-[var(--vf-border-default)]">
             <div
               class="h-full bg-purple-500 transition-all duration-500 ease-out"
               :style="{ width: `${Math.min((stats.memory_mb / 512) * 100, 100)}%` }"
@@ -126,8 +86,8 @@ const stopDrag = () => {
       </div>
       
       <div v-else class="flex justify-center py-4">
-        <span class="animate-pulse text-gray-500">Loading metrics...</span>
+        <span class="animate-pulse text-[var(--vf-text-secondary)]">Loading metrics...</span>
       </div>
     </div>
-  </div>
+  </BaseWidget>
 </template>
