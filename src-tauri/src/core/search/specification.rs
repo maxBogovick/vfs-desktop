@@ -54,6 +54,53 @@ impl FileSpecification for NameContainsSpec {
 }
 // Спецификация: расширение файла
 struct ExtensionSpec(String);
+/// Спецификация для фильтрации по расширению файла
+///
+/// # Примеры
+/// ```
+/// // Найти все PDF
+/// let spec = ExtensionSpecification::new("pdf");
+/// let spec = ExtensionSpecification::new(".pdf"); // то же самое
+///
+/// // Найти все изображения (нужно несколько спецификаций через OR)
+/// let pdf_spec = ExtensionSpecification::new("jpg");
+/// let png_spec = ExtensionSpecification::new("png");
+/// ```
+pub struct ExtensionSpecification {
+    extension: String,
+}
+
+impl ExtensionSpecification {
+    /// Создает новую спецификацию по расширению
+    ///
+    /// Автоматически добавляет точку если её нет
+    pub fn new(extension: String) -> Self {
+        // 🎯 ВАША ЗАДАЧА:
+        //
+        // 1. Если extension начинается с точки, оставить как есть
+        // 2. Если нет точки, добавить её в начало
+        // 3. Привести к lowercase для case-insensitive поиска
+        //
+        // Подсказка:
+        // let ext = if extension.starts_with('.') {
+        //     extension.to_lowercase()
+        // } else {
+        //     format!(".{}", extension.to_lowercase())
+        // };
+        let ext = if extension.starts_with('.') { extension.to_lowercase() } else { format!(".{}", extension.to_lowercase()) };
+        Self {extension: ext}
+    }
+}
+
+impl FileSpecification for ExtensionSpecification {
+    fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool {
+        // 🎯 ВАША ЗАДАЧА:
+        //
+        // 1. Приведите имя файла к lowercase
+        // 2. Проверьте, заканчивается ли имя на self.extension
+        item.name.to_lowercase().ends_with(&self.extension)
+    }
+}
 impl FileSpecification for ExtensionSpec {
     fn is_satisfied_by(&self, item: &FileSystemEntry) -> bool {
         item.name.to_lowercase().ends_with(&self.0.to_lowercase())
@@ -482,5 +529,85 @@ mod tests {
         assert!(spec.is_satisfied_by(&create_file_with_size("document.pdf", Some(500 * 1024))));
         assert!(spec.is_satisfied_by(&create_file_with_size("presentation.pptx", Some(5 * 1024 * 1024))));
         assert!(!spec.is_satisfied_by(&create_file_with_size("movie.mkv", Some(1024 * 1024 * 1024))));
+    }
+
+
+    #[test]
+    fn test_extension_normalization_without_dot() {
+        let spec = ExtensionSpecification::new("pdf".into());
+        assert_eq!(spec.extension, ".pdf");
+    }
+    #[test]
+    fn test_extension_normalization_with_dot() {
+        let spec = ExtensionSpecification::new(".pdf".into());
+        assert_eq!(spec.extension, ".pdf");
+    }
+    #[test]
+    fn test_extension_normalization_uppercase() {
+        let spec = ExtensionSpecification::new("PDF".into());
+        assert_eq!(spec.extension, ".pdf");
+        let spec = ExtensionSpecification::new(".JPG".into());
+        assert_eq!(spec.extension, ".jpg");
+    }
+    #[test]
+    fn test_extension_match_exact() {
+        let spec = ExtensionSpecification::new("txt".into());
+        assert!(spec.is_satisfied_by(&create_test_file("document.txt")));
+        assert!(spec.is_satisfied_by(&create_test_file("README.txt")));
+    }
+    #[test]
+    fn test_extension_match_case_insensitive() {
+        let spec = ExtensionSpecification::new("pdf".into());
+        assert!(spec.is_satisfied_by(&create_test_file("document.pdf")));
+        assert!(spec.is_satisfied_by(&create_test_file("report.PDF")));
+        assert!(spec.is_satisfied_by(&create_test_file("file.Pdf")));
+    }
+    #[test]
+    fn test_extension_no_match() {
+        let spec = ExtensionSpecification::new("pdf".into());
+        assert!(!spec.is_satisfied_by(&create_test_file("document.txt")));
+        assert!(!spec.is_satisfied_by(&create_test_file("image.jpg")));
+        assert!(!spec.is_satisfied_by(&create_test_file("README")));
+    }
+    #[test]
+    fn test_extension_compound() {
+        // Файлы с составным расширением
+        let spec = ExtensionSpecification::new("gz".into());
+        assert!(spec.is_satisfied_by(&create_test_file("archive.tar.gz")));
+        assert!(spec.is_satisfied_by(&create_test_file("file.gz")));
+        assert!(!spec.is_satisfied_by(&create_test_file("archive.tar")));
+    }
+    #[test]
+    fn test_extension_hidden_file() {
+        let spec = ExtensionSpecification::new("gitignore".into());
+        assert!(spec.is_satisfied_by(&create_test_file(".gitignore")));
+    }
+    #[test]
+    fn test_extension_no_extension() {
+        let spec = ExtensionSpecification::new("txt".into());
+        assert!(!spec.is_satisfied_by(&create_test_file("README")));
+        assert!(!spec.is_satisfied_by(&create_test_file("Makefile")));
+    }
+    #[test]
+    fn test_extension_realistic_images() {
+        let jpg_spec = ExtensionSpecification::new("jpg".into());
+        let png_spec = ExtensionSpecification::new("png".into());
+        // JPG файлы
+        assert!(jpg_spec.is_satisfied_by(&create_test_file("photo.jpg")));
+        assert!(jpg_spec.is_satisfied_by(&create_test_file("IMG_001.JPG")));
+        assert!(!jpg_spec.is_satisfied_by(&create_test_file("photo.png")));
+        // PNG файлы
+        assert!(png_spec.is_satisfied_by(&create_test_file("icon.png")));
+        assert!(png_spec.is_satisfied_by(&create_test_file("screenshot.PNG")));
+        assert!(!png_spec.is_satisfied_by(&create_test_file("icon.jpg")));
+    }
+    #[test]
+    fn test_extension_documents() {
+        let pdf_spec = ExtensionSpecification::new("pdf".into());
+        let docx_spec = ExtensionSpecification::new("docx".into());
+        assert!(pdf_spec.is_satisfied_by(&create_test_file("report.pdf")));
+        assert!(docx_spec.is_satisfied_by(&create_test_file("letter.docx")));
+        assert!(!pdf_spec.is_satisfied_by(&create_test_file("letter.docx")));
+        assert!(!docx_spec.is_satisfied_by(&create_test_file("report.pdf")));
     }
 }
