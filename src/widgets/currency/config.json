@@ -1,0 +1,6 @@
+{
+  "id": "currency",
+  "name": "Currency Rates",
+  "description": "Displays current exchange rates (USD base)",
+  "defaultActive": false
+}

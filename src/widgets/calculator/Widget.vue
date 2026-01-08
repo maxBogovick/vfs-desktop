@@ -1,13 +1,17 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import BaseWidget from './BaseWidget.vue';
+import { ref } from 'vue';
+import BaseWidget from '../../components/BaseWidget.vue';
+import type { WidgetLayout } from '../../composables/useWidgets';
 
 defineProps<{
   visible: boolean;
+  id: string;
+  layout: WidgetLayout;
 }>();
 
 defineEmits<{
   (e: 'close'): void;
+  (e: 'update:layout', layout: Partial<WidgetLayout>): void;
 }>();
 
 const display = ref('0');
@@ -20,12 +24,8 @@ const setMode = (m: 'DEC' | 'HEX' | 'BIN') => {
   if (lastResult.value !== null) {
     display.value = formatNumber(lastResult.value, m);
   } else {
-    // If we have an expression but no result yet, we can't easily convert the partial input
-    // So we just clear or keep as is? Let's keep as is if it's 0, otherwise reset.
     if (display.value === '0') return;
-    // For simplicity in this widget, switching mode clears if not looking at a result
     if (!expression.value) {
-        // trying to convert current display value
         try {
              const num = parseInt(display.value, mode.value === 'HEX' ? 16 : (mode.value === 'BIN' ? 2 : 10));
              if (!isNaN(num)) {
@@ -51,10 +51,9 @@ const append = (char: string) => {
   } else {
     display.value += char;
   }
-  // Reset last result state so we can start a new calculation
   if (lastResult.value !== null) {
       lastResult.value = null;
-      display.value = char; // Start fresh
+      display.value = char;
   }
 };
 
@@ -74,20 +73,7 @@ const backspace = () => {
 
 const calculate = () => {
   try {
-    // Basic evaluation for the widget prototype
-    // Security note: In a real app, use a safer math parser. 
-    // For a local electron/tauri app widget with user input, this is acceptable for a prototype.
-    // We need to handle HEX/BIN inputs if we allowed them in the string, 
-    // but for now let's assume standard math on current view.
-    
-    // Simplification: We only evaluate DEC math. 
-    // If in HEX/BIN mode, we convert to DEC first? 
-    // Or we just strictly allow basic math operations.
-    
-    // Let's stick to standard math for now and assume input is valid JS.
-    // Replace visual operators
     const sanitized = display.value.replace(/×/g, '*').replace(/÷/g, '/');
-    
     // eslint-disable-next-line no-new-func
     const result = new Function('return ' + sanitized)();
     
@@ -103,29 +89,28 @@ const buttons = [
   ['7', '8', '9', '×'],
   ['4', '5', '6', '-'],
   ['1', '2', '3', '+'],
-  ['0', '.', '(', ')'], // Added parenthesis for programmer utility
+  ['0', '.', '(', ')'],
   ['=',]
 ];
-
-// Special layout for the last row
 </script>
 
 <template>
   <BaseWidget
     :visible="visible"
+    :id="id"
+    :layout="layout"
     title="Calculator"
-    width="w-64"
-    :initial-position="{ x: 800, y: 150 }"
     @close="$emit('close')"
+    @update:layout="$emit('update:layout', $event)"
   >
-    <div class="p-3 bg-[var(--vf-bg-primary)]">
+    <div class="p-3 bg-[var(--vf-bg-primary)] h-full flex flex-col">
         <!-- Display -->
-        <div class="bg-[var(--vf-bg-secondary)] border border-[var(--vf-border-default)] rounded p-2 mb-3 text-right font-mono text-lg truncate h-10 text-[var(--vf-text-primary)]">
+        <div class="bg-[var(--vf-bg-secondary)] border border-[var(--vf-border-default)] rounded p-2 mb-3 text-right font-mono text-lg truncate h-10 text-[var(--vf-text-primary)] shrink-0">
             {{ display }}
         </div>
 
         <!-- Mode Switcher -->
-        <div class="flex gap-1 mb-3 text-[10px]">
+        <div class="flex gap-1 mb-3 text-[10px] shrink-0">
             <button 
                 v-for="m in ['DEC', 'HEX', 'BIN']" 
                 :key="m"
@@ -140,13 +125,12 @@ const buttons = [
         </div>
 
         <!-- Keypad -->
-        <div class="grid grid-cols-4 gap-2">
+        <div class="grid grid-cols-4 gap-2 flex-1">
             <template v-for="(row, rIndex) in buttons" :key="rIndex">
                 <template v-if="row.length === 1">
-                     <!-- Equals button spans full width -->
                      <button
                         @click="calculate"
-                        class="col-span-4 bg-[var(--vf-accent-primary)] text-white hover:bg-[var(--vf-accent-hover)] rounded py-2 font-bold shadow-sm active:translate-y-0.5 transition-all"
+                        class="col-span-4 bg-[var(--vf-accent-primary)] text-white hover:bg-[var(--vf-accent-hover)] rounded py-2 font-bold shadow-sm active:translate-y-0.5 transition-all h-full"
                     >
                         =
                     </button>
@@ -162,7 +146,7 @@ const buttons = [
                             else if (btn === '×') append('*');
                             else append(btn);
                         }"
-                        class="bg-[var(--vf-surface-default)] border border-[var(--vf-border-default)] hover:bg-[var(--vf-surface-hover)] text-[var(--vf-text-primary)] rounded py-2 font-medium shadow-sm active:translate-y-0.5 transition-all text-sm"
+                        class="bg-[var(--vf-surface-default)] border border-[var(--vf-border-default)] hover:bg-[var(--vf-surface-hover)] text-[var(--vf-text-primary)] rounded py-2 font-medium shadow-sm active:translate-y-0.5 transition-all text-sm h-full"
                         :class="{'text-[var(--vf-accent-primary)] font-bold': ['÷', '×', '-', '+', '%'].includes(btn)}"
                     >
                         {{ btn }}

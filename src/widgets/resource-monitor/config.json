@@ -1,0 +1,6 @@
+{
+  "id": "resource-monitor",
+  "name": "System Monitor",
+  "description": "Track CPU and Memory usage",
+  "defaultActive": false
+}

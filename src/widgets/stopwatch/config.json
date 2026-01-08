@@ -1,0 +1,6 @@
+{
+  "id": "stopwatch",
+  "name": "Stopwatch",
+  "description": "Simple timer for tracking tasks",
+  "defaultActive": false
+}

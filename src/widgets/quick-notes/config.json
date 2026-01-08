@@ -1,0 +1,6 @@
+{
+  "id": "quick-notes",
+  "name": "Quick Notes",
+  "description": "A simple scratchpad for temporary notes",
+  "defaultActive": false
+}

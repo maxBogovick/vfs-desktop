@@ -1,0 +1,6 @@
+{
+  "id": "calculator",
+  "name": "Calculator",
+  "description": "Programmer calculator (DEC/HEX/BIN)",
+  "defaultActive": false
+}

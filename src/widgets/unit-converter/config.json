@@ -1,0 +1,6 @@
+{
+  "id": "unit-converter",
+  "name": "Unit Converter",
+  "description": "Convert length, mass, and temperature",
+  "defaultActive": false
+}

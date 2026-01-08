@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from 'vue';
-import BaseWidget from './BaseWidget.vue';
+import BaseWidget from '../../components/BaseWidget.vue';
+import type { WidgetLayout } from '../../composables/useWidgets';
 
 defineProps<{
   visible: boolean;
+  id: string;
+  layout: WidgetLayout;
 }>();
 
 defineEmits<{
   (e: 'close'): void;
+  (e: 'update:layout', layout: Partial<WidgetLayout>): void;
 }>();
 
 const noteContent = ref('');
@@ -27,13 +31,13 @@ watch(noteContent, (newVal) => {
 <template>
   <BaseWidget
     :visible="visible"
+    :id="id"
+    :layout="layout"
     title="Quick Notes"
-    width="w-64"
-    height="h-64"
-    :initial-position="{ x: 600, y: 150 }"
     @close="$emit('close')"
+    @update:layout="$emit('update:layout', $event)"
   >
-    <div class="flex-1 p-0 bg-[var(--vf-bg-primary)]">
+    <div class="flex-1 p-0 bg-[var(--vf-bg-primary)] h-full">
       <textarea
         v-model="noteContent"
         @keydown.esc.stop="$emit('close')"

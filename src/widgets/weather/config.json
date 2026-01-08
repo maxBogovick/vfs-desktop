@@ -1,0 +1,6 @@
+{
+  "id": "weather",
+  "name": "Weather",
+  "description": "Real-time weather with location support",
+  "defaultActive": false
+}

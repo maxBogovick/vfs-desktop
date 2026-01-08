@@ -1,0 +1,6 @@
+{
+  "id": "json-formatter",
+  "name": "JSON Formatter",
+  "description": "Validate and pretty-print JSON data",
+  "defaultActive": false
+}

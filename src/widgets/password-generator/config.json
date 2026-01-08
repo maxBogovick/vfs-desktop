@@ -1,0 +1,6 @@
+{
+  "id": "password-generator",
+  "name": "Password Generator",
+  "description": "Create strong, secure passwords instantly",
+  "defaultActive": false
+}

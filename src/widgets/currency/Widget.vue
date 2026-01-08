@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
-import BaseWidget from './BaseWidget.vue';
+import BaseWidget from '../../components/BaseWidget.vue';
+import type { WidgetLayout } from '../../composables/useWidgets';
 
 defineProps<{
   visible: boolean;
+  id: string;
+  layout: WidgetLayout;
 }>();
 
 defineEmits<{
   (e: 'close'): void;
+  (e: 'update:layout', layout: Partial<WidgetLayout>): void;
 }>();
 
 interface Rates {
@@ -19,7 +23,6 @@ const loading = ref(true);
 const error = ref<string | null>(null);
 const lastUpdated = ref<string>('');
 
-// Fetch rates
 const fetchRates = async () => {
   loading.value = true;
   error.value = null;
@@ -33,14 +36,13 @@ const fetchRates = async () => {
   } catch (e) {
     console.error('Failed to fetch rates:', e);
     error.value = 'Failed to load rates';
-    // Mock data fallback
     rates.value = {
       EUR: 0.92,
       GBP: 0.79,
       JPY: 148.5,
       RUB: 91.5,
       CNY: 7.19,
-      BTC: 0.000023 // heavily fluctuating, just placeholder
+      BTC: 0.000023
     };
   } finally {
     loading.value = false;
@@ -51,7 +53,6 @@ let refreshInterval: number | null = null;
 
 onMounted(() => {
   fetchRates();
-  // Refresh every 5 minutes
   refreshInterval = window.setInterval(fetchRates, 5 * 60 * 1000);
 });
 
@@ -65,10 +66,11 @@ const currenciesToShow = ['EUR', 'GBP', 'JPY', 'RUB', 'CNY'];
 <template>
   <BaseWidget
     :visible="visible"
+    :id="id"
+    :layout="layout"
     title="Currency Rates (USD)"
-    width="w-64"
-    :initial-position="{ x: 500, y: 150 }"
     @close="$emit('close')"
+    @update:layout="$emit('update:layout', $event)"
   >
     <template #actions>
       <button 
@@ -80,7 +82,7 @@ const currenciesToShow = ['EUR', 'GBP', 'JPY', 'RUB', 'CNY'];
       </button>
     </template>
 
-    <div class="p-4 space-y-2 text-[var(--vf-text-primary)]">
+    <div class="p-4 space-y-2 text-[var(--vf-text-primary)] h-full">
       <div v-if="loading && !Object.keys(rates).length" class="flex justify-center py-4">
         <span class="animate-pulse text-[var(--vf-text-secondary)]">Loading...</span>
       </div>

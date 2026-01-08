@@ -1,0 +1,6 @@
+{
+  "id": "clipboard-manager",
+  "name": "Clipboard History",
+  "description": "Track and recall copied text snippets",
+  "defaultActive": false
+}

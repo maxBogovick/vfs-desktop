@@ -1,14 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
-import BaseWidget from './BaseWidget.vue';
+import BaseWidget from '../../components/BaseWidget.vue';
+import type { WidgetLayout } from '../../composables/useWidgets';
 
 defineProps<{
   visible: boolean;
+  id: string;
+  layout: WidgetLayout;
 }>();
 
 defineEmits<{
   (e: 'close'): void;
+  (e: 'update:layout', layout: Partial<WidgetLayout>): void;
 }>();
 
 interface SystemStats {
@@ -40,12 +44,13 @@ onUnmounted(() => {
 <template>
   <BaseWidget
     :visible="visible"
+    :id="id"
+    :layout="layout"
     title="System Monitor"
-    width="w-64"
-    :initial-position="{ x: 200, y: 150 }"
     @close="$emit('close')"
+    @update:layout="$emit('update:layout', $event)"
   >
-    <div class="p-4 space-y-4 text-[var(--vf-text-primary)]">
+    <div class="p-4 space-y-4 text-[var(--vf-text-primary)] h-full">
       <div v-if="stats">
         <!-- CPU Section -->
         <div>
