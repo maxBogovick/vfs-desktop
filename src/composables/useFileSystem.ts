@@ -76,8 +76,15 @@ export function useFileSystem() {
     error.value = null;
 
     try {
-      const entries: FileSystemEntry[] = await invoke('read_directory', { path, panelFs: panelFs || null });
-      files.value = entriesToFileItems(entries);
+      // Check if path is an archive (ends with archive extension)
+      // This is a simple check for MVP. Robust check would require backend helper.
+      if (/\.(zip|tar|gz|tgz)$/i.test(path)) {
+         const entries: FileSystemEntry[] = await invoke('list_archive_contents', { archivePath: path });
+         files.value = entriesToFileItems(entries);
+      } else {
+         const entries: FileSystemEntry[] = await invoke('read_directory', { path, panelFs: panelFs || null });
+         files.value = entriesToFileItems(entries);
+      }
     } catch (e) {
       error.value = e instanceof Error ? e.message : 'Failed to load directory';
       files.value = [];
@@ -291,6 +298,34 @@ export function useFileSystem() {
     }
   };
 
+  // Extract archive
+  const extractArchive = async (archivePath: string, destinationPath: string): Promise<void> => {
+    try {
+      await invoke('extract_archive', { archivePath, destinationPath });
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Failed to extract archive');
+    }
+  };
+
+  // List archive contents
+  const listArchiveContents = async (archivePath: string): Promise<FileItem[]> => {
+    try {
+      const entries: FileSystemEntry[] = await invoke('list_archive_contents', { archivePath });
+      return entriesToFileItems(entries);
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Failed to list archive contents');
+    }
+  };
+
+  // Create archive
+  const createArchive = async (sourcePaths: string[], destinationPath: string): Promise<void> => {
+    try {
+      await invoke('create_archive', { sourcePaths, destinationPath });
+    } catch (e) {
+      throw new Error(e instanceof Error ? e.message : 'Failed to create archive');
+    }
+  };
+
   return {
     files,
     isLoading,
@@ -314,5 +349,8 @@ export function useFileSystem() {
     formatFileSize,
     normalizePath,
     openTerminal,
+    extractArchive,
+    listArchiveContents,
+    createArchive,
   };
 }

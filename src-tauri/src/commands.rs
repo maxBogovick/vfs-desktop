@@ -240,6 +240,23 @@ pub fn rename_bookmark(id: String, new_name: String) -> Result<(), String> {
     API.bookmarks.rename(&id, new_name).map_err(|e| e.to_string())
 }
 
+// ====== Archive Commands ======
+
+#[tauri::command]
+pub fn extract_archive(archive_path: String, destination_path: String) -> Result<(), String> {
+    crate::archives::extract_archive(&archive_path, &destination_path)
+}
+
+#[tauri::command]
+pub fn list_archive_contents(archive_path: String) -> Result<Vec<FileSystemEntry>, String> {
+    crate::archives::list_archive_contents(&archive_path)
+}
+
+#[tauri::command]
+pub fn create_archive(source_paths: Vec<String>, destination_path: String) -> Result<(), String> {
+    crate::archives::create_archive(source_paths, destination_path)
+}
+
 // ====== Команды для работы с UI состоянием ======
 
 #[tauri::command]

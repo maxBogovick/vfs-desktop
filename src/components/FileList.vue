@@ -88,7 +88,7 @@ const getFileIcon = (item: FileItem) => {
 };
 
 const isFolder = (item: FileItem) => {
-  return item.type === 'folder' || item.type === 'drive' || item.type === 'system';
+  return item.type === 'folder' || item.type === 'drive' || item.type === 'system' || item.type === 'archive';
 };
 
 const getTagColor = (tag: string) => {

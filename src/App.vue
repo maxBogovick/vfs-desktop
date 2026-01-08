@@ -60,7 +60,7 @@ import { createKeyboardShortcuts } from './utils/shortcuts';
 import type {FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange, FileSystemBackend} from './types';
 
 // File System
-const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory, writeFileContent } = useFileSystem();
+const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory, writeFileContent, extractArchive, createArchive } = useFileSystem();
 
 // Vault Security
 const vault = useVault();
@@ -402,7 +402,7 @@ const getSelected = () => getSelectedItems(files.value);
 
 // Handlers
 const handleItemDoubleClick = (item: FileItem) => {
-  if (item.type === 'folder' || item.type === 'drive' || item.type === 'system') {
+  if (item.type === 'folder' || item.type === 'drive' || item.type === 'system' || item.type === 'archive') {
     const pathParts = item.path.split('/').filter(p => p);
     navigateTo(pathParts);
   } else {
@@ -1171,26 +1171,78 @@ const contextMenuHandlers = {
   openTerminal: () => {
     if (contextMenu.value?.item) {
       handleOpenTerminal(contextMenu.value.item);
-    } else {
-       // Background click - open current directory
-       const { openTerminal } = useFileSystem();
-       const { success, error } = useNotifications();
-       
-       let path = '';
-       if (isDualMode.value) {
-          path = '/' + activePanelPath.value.join('/');
-       } else {
-          path = '/' + currentPath.value.join('/');
-       }
-
-       if (path) {
-           openTerminal(path).then(() => {
-               success('Terminal opened', `Opened terminal in ${path}`);
-           }).catch(err => {
-               error('Failed to open terminal', err instanceof Error ? err.message : 'Unknown error');
-           });
-       }
     }
+  },
+  extractHere: async () => {
+    if (contextMenu.value?.item) {
+        const item = contextMenu.value.item;
+        const { success, error } = useNotifications();
+        
+        let currentDirPath = '';
+        if (isDualMode.value) {
+            currentDirPath = '/' + activePanelPath.value.join('/');
+        } else {
+            currentDirPath = '/' + currentPath.value.join('/');
+        }
+        
+        const destination = currentDirPath.endsWith('/') ? currentDirPath : currentDirPath + '/';
+            
+        try {
+            await extractArchive(item.path, destination);
+            success('Extracted', `Extracted ${item.name}`);
+            
+            // Refresh
+             if (isDualMode.value) {
+                getActivePanelMethods()?.handleRefresh();
+             } else {
+                handleRefresh();
+             }
+        } catch (err) {
+            error('Extraction failed', err instanceof Error ? err.message : String(err));
+        }
+    }
+  },
+  extractToFolder: async () => {
+    if (contextMenu.value?.item) {
+        const item = contextMenu.value.item;
+        const { success, error } = useNotifications();
+        
+        // Extract to a folder with the same name as the archive
+        const folderName = item.name.replace(/\.(zip|tar|gz|tgz)$/i, '');
+        let currentDirPath = '';
+        if (isDualMode.value) {
+            currentDirPath = '/' + activePanelPath.value.join('/');
+        } else {
+            currentDirPath = '/' + currentPath.value.join('/');
+        }
+        
+        const destination = currentDirPath.endsWith('/') 
+            ? `${currentDirPath}${folderName}` 
+            : `${currentDirPath}/${folderName}`;
+            
+        try {
+            await extractArchive(item.path, destination);
+            success('Extracted', `Extracted ${item.name} to ${folderName}`);
+            
+            // Refresh
+             if (isDualMode.value) {
+                getActivePanelMethods()?.handleRefresh();
+             } else {
+                handleRefresh();
+             }
+        } catch (err) {
+            error('Extraction failed', err instanceof Error ? err.message : String(err));
+        }
+    }
+  },
+  compressToZip: async () => {
+      await handleCompress('zip');
+  },
+  compressToTar: async () => {
+      await handleCompress('tar');
+  },
+  compressToTarGz: async () => {
+      await handleCompress('tar.gz');
   },
   properties: () => {
     if (isDualMode.value) {
@@ -1308,6 +1360,82 @@ const handleBatchDialogCancel = () => {
   showBatchRenameDialog.value = false;
   showBatchAttributeDialog.value = false;
   batchOperationFiles.value = [];
+};
+
+const handleCompress = async (format: 'zip' | 'tar' | 'tar.gz') => {
+    const { success, error } = useNotifications();
+    
+    // Get selected items
+    let selectedItems: FileItem[] = [];
+    if (isDualMode.value) {
+        const methods = getActivePanelMethods();
+        if (methods) {
+            selectedItems = methods.getSelectedItems();
+        }
+    } else {
+        selectedItems = getSelected();
+    }
+
+    if (selectedItems.length === 0) return;
+
+    // Determine archive name
+    let archiveName = 'archive';
+    if (selectedItems.length === 1) {
+        archiveName = selectedItems[0].name;
+    } else {
+        // Use parent folder name if multiple items
+        let currentDirPath = '';
+        if (isDualMode.value) {
+            currentDirPath = '/' + activePanelPath.value.join('/');
+        } else {
+            currentDirPath = '/' + currentPath.value.join('/');
+        }
+        const parentName = currentDirPath.split('/').pop() || 'archive';
+        archiveName = parentName;
+    }
+
+    // Prompt for name
+    showInput(
+        'Create Archive',
+        'Enter archive name:',
+        async (name: string) => {
+            if (!name) return closeInput();
+            
+            let filename = name;
+            if (!filename.endsWith(`.${format}`)) {
+                filename += `.${format}`;
+            }
+
+            let currentDirPath = '';
+            if (isDualMode.value) {
+                currentDirPath = '/' + activePanelPath.value.join('/');
+            } else {
+                currentDirPath = '/' + currentPath.value.join('/');
+            }
+            
+            const destinationPath = currentDirPath.endsWith('/') 
+                ? `${currentDirPath}${filename}` 
+                : `${currentDirPath}/${filename}`;
+
+            const sourcePaths = selectedItems.map(i => i.path);
+
+            try {
+                await createArchive(sourcePaths, destinationPath);
+                success('Archive Created', `Created ${filename}`);
+                closeInput();
+                
+                // Refresh
+                 if (isDualMode.value) {
+                    getActivePanelMethods()?.handleRefresh();
+                 } else {
+                    handleRefresh();
+                 }
+            } catch (err) {
+                error('Compression failed', err instanceof Error ? err.message : String(err));
+            }
+        },
+        archiveName
+    );
 };
 
 // Watch current path and load directory
@@ -1694,6 +1822,11 @@ onMounted(async () => {
         @delete="contextMenuHandlers.delete"
         @add-to-favorites="contextMenuHandlers.addToFavorites"
         @open-terminal="contextMenuHandlers.openTerminal"
+        @extract-here="contextMenuHandlers.extractHere"
+        @extract-to-folder="contextMenuHandlers.extractToFolder"
+        @compress-to-zip="contextMenuHandlers.compressToZip"
+        @compress-to-tar="contextMenuHandlers.compressToTar"
+        @compress-to-tar-gz="contextMenuHandlers.compressToTarGz"
         @properties="contextMenuHandlers.properties"
         @batch-rename="contextMenuHandlers.batchRename"
         @batch-attributes="contextMenuHandlers.batchAttributes"

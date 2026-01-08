@@ -4,6 +4,7 @@ pub mod core;
 pub mod config;
 mod error;
 mod commands;
+mod archives;
 mod progress;
 mod file_operations;
 #[cfg(feature = "api-server")]
@@ -100,6 +101,10 @@ pub fn run() {
             get_file_templates,
             suggest_file_extension,
             get_template_content,
+            // Archive commands
+            extract_archive,
+            list_archive_contents,
+            create_archive,
             // Vault security commands
             vault_is_enabled,
             vault_get_status,

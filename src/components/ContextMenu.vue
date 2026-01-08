@@ -20,6 +20,11 @@ interface Emits {
   (e: 'addToFavorites'): void;
   (e: 'openTerminal'): void;
   (e: 'properties'): void;
+  (e: 'extractHere'): void;
+  (e: 'extractToFolder'): void;
+  (e: 'compressToZip'): void;
+  (e: 'compressToTar'): void;
+  (e: 'compressToTarGz'): void;
   (e: 'batchRename'): void;
   (e: 'batchAttributes'): void;
   (e: 'refresh'): void;
@@ -118,6 +123,38 @@ const handleAction = (action: keyof Emits) => {
       <!-- Batch Operations (when multiple items selected) -->
       <div v-if="selectedCount > 1" class="border-t border-[#D0D0BF] my-1"></div>
 
+      <!-- Archive Operations (Submenu) -->
+      <div
+        v-if="selectedCount > 0"
+        class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2 group relative"
+      >
+        <span class="w-4">📦</span>
+        <span class="flex-1">Archive...</span>
+        <span class="text-[9px] text-gray-400">►</span>
+        
+        <!-- Submenu -->
+        <div class="hidden group-hover:block absolute left-full top-0 bg-white border border-[#919B9C] shadow-lg rounded text-[11px] py-1 min-w-[150px]">
+            <div
+                @click.stop="handleAction('compressToZip')"
+                class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+            >
+                <span>Add to .zip</span>
+            </div>
+            <div
+                @click.stop="handleAction('compressToTar')"
+                class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+            >
+                <span>Add to .tar</span>
+            </div>
+            <div
+                @click.stop="handleAction('compressToTarGz')"
+                class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+            >
+                <span>Add to .tar.gz</span>
+            </div>
+        </div>
+      </div>
+
       <div
         v-if="selectedCount > 1"
         @click="handleAction('batchRename')"
@@ -168,6 +205,32 @@ const handleAction = (action: keyof Emits) => {
       >
         <span class="w-4">💻</span>
         <span class="flex-1">Open in Terminal</span>
+      </div>
+
+      <!-- Extract (for archives) -->
+      <div
+        v-if="item.type === 'archive'"
+        class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2 group relative"
+      >
+        <span class="w-4">📦</span>
+        <span class="flex-1">Extract...</span>
+        <span class="text-[9px] text-gray-400">►</span>
+
+        <!-- Submenu -->
+        <div class="hidden group-hover:block absolute left-full top-0 bg-white border border-[#919B9C] shadow-lg rounded text-[11px] py-1 min-w-[150px]">
+            <div
+                @click.stop="handleAction('extractHere')"
+                class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+            >
+                <span>Extract Here</span>
+            </div>
+            <div
+                @click.stop="handleAction('extractToFolder')"
+                class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+            >
+                <span>Extract to Folder</span>
+            </div>
+        </div>
       </div>
 
       <!-- Properties -->

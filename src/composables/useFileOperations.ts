@@ -508,5 +508,6 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
     handleProperties,
     handleRevealInFinder,
     handleRefresh,
+    handleTransfer,
   };
 }

@@ -240,7 +240,7 @@ const handleItemDoubleClick = (item: FileItem) => {
   if (!props.isActive) {
     emit('activate');
   }
-  if (item.type === 'folder' || item.type === 'drive' || item.type === 'system') {
+  if (item.type === 'folder' || item.type === 'drive' || item.type === 'system' || item.type === 'archive') {
     const pathParts = item.path.split('/').filter(p => p);
     updateTabPath(pathParts);
   } else {
