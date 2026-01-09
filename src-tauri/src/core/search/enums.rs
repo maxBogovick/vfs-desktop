@@ -127,6 +127,7 @@ pub struct SearchQuery {
 ///
 /// # Пример использования
 /// ```
+/// use vfdir_lib::core::search::enums::{SearchQueryBuilder, TextMatchMode};
 /// let query = SearchQueryBuilder::new()
 ///     .with_name("report", TextMatchMode::Fuzzy(2))
 ///     .with_size_range(Some(1024), Some(10_485_760))

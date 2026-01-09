@@ -5,7 +5,7 @@
         "home": {
           "Directory": {
             "children": {
-              "Desktop": {
+              "Pictures": {
                 "Directory": {
                   "children": {},
                   "created": 1767720442719,
@@ -19,21 +19,28 @@
                   "modified": 1767720442720
                 }
               },
-              "Documents": {
-                "Directory": {
-                  "children": {},
-                  "created": 1767720442719,
-                  "modified": 1767720442719
-                }
-              },
-              "Pictures": {
-                "Directory": {
-                  "children": {},
-                  "created": 1767720442719,
-                  "modified": 1767720442719
-                }
-              },
               "Downloads": {
+                "Directory": {
+                  "children": {},
+                  "created": 1767720442719,
+                  "modified": 1767720442719
+                }
+              },
+              "old_name": {
+                "Directory": {
+                  "children": {},
+                  "created": 1767900492622,
+                  "modified": 1767900492622
+                }
+              },
+              "Desktop": {
+                "Directory": {
+                  "children": {},
+                  "created": 1767720442719,
+                  "modified": 1767720442719
+                }
+              },
+              "Documents": {
                 "Directory": {
                   "children": {},
                   "created": 1767720442719,
@@ -42,7 +49,7 @@
               }
             },
             "created": 1767720442719,
-            "modified": 1767720442720
+            "modified": 1767900492622
           }
         }
       },

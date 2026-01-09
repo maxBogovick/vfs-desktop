@@ -12,13 +12,6 @@
                   "modified": 1767720442719
                 }
               },
-              "Pictures": {
-                "Directory": {
-                  "children": {},
-                  "created": 1767720442719,
-                  "modified": 1767720442719
-                }
-              },
               "Documents": {
                 "Directory": {
                   "children": {},
@@ -32,10 +25,17 @@
                   "created": 1767720442719,
                   "modified": 1767720442719
                 }
+              },
+              "Pictures": {
+                "Directory": {
+                  "children": {},
+                  "created": 1767720442719,
+                  "modified": 1767720442719
+                }
               }
             },
             "created": 1767720442719,
-            "modified": 1767720442720
+            "modified": 1767900492622
           }
         }
       },
