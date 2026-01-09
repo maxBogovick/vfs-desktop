@@ -1,5 +1,6 @@
 pub mod real_fs;
 pub mod virtual_fs;
+pub mod blob_store;
 pub mod vault_error;
 pub mod security;
 pub mod recovery;

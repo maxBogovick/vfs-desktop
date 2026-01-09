@@ -52,7 +52,7 @@ impl VaultConfig {
 }
 
 /// Session in memory. ZeroizeOnDrop ensures key is zeroed on drop.
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct VaultSession {
     #[zeroize(skip)]
     _marker: (),

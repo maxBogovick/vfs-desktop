@@ -50,9 +50,7 @@ const showHidden = ref(false);
 const {
   files,
   isLoading,
-  loadDirectory,
-  copyItems,
-  moveItems
+  loadDirectory
 } = useFileSystem();
 
 // Computed: Sorted and filtered files
@@ -161,7 +159,7 @@ const { refreshAllPanels } = useGlobalRefresh();
 // File Operations
 const fileOps = useFileOperations(async () => {
   await refreshAllPanels(currentPath.value);
-});
+}) as any;
 
 // Inline File Creator state (per panel)
 const showInlineCreator = ref(false);

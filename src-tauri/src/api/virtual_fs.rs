@@ -9,6 +9,7 @@ use ::base64::Engine;
 use crate::core::{FileSystem, FileSystemEntry, FileSystemError, FileSystemResult};
 use crate::config::VaultPaths;
 use crate::state::APP_CONFIG;
+use crate::api::blob_store::BlobStore;
 
 // Thread-local storage for active recovery session
 thread_local! {
@@ -19,7 +20,8 @@ thread_local! {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 enum VfsNode {
     File {
-        content: Vec<u8>,
+        file_id: String, // UUID ссылка на BlobStore
+        size: u64,
         created: u64,
         modified: u64,
     },
@@ -31,11 +33,12 @@ enum VfsNode {
 }
 
 impl VfsNode {
-    /// Создать новый файл
-    fn new_file(content: Vec<u8>) -> Self {
+    /// Создать новый файл (теперь только метаданные)
+    fn new_file(file_id: String, size: u64) -> Self {
         let now = current_timestamp();
         VfsNode::File {
-            content,
+            file_id,
+            size,
             created: now,
             modified: now,
         }
@@ -59,7 +62,7 @@ impl VfsNode {
     /// Получить размер узла
     fn size(&self) -> u64 {
         match self {
-            VfsNode::File { content, .. } => content.len() as u64,
+            VfsNode::File { size, .. } => *size,
             VfsNode::Directory { .. } => 0,
         }
     }
@@ -81,8 +84,6 @@ impl VfsNode {
     }
 
     /// Объединить с другим узлом (для копирования директорий)
-    /// Если оба узла - директории, содержимое other вливается в self.
-    /// Иначе self заменяется на other.
     fn merge_with(&mut self, other: VfsNode) {
         match (self, other) {
             (VfsNode::Directory { children: self_children, .. }, VfsNode::Directory { children: other_children, .. }) => {
@@ -114,22 +115,11 @@ pub struct VfsState {
 impl Default for VfsState {
     fn default() -> Self {
         let mut root = VfsNode::new_directory();
-
-        // Создаем базовую структуру директорий
         if let VfsNode::Directory { children, .. } = &mut root {
             let mut home = VfsNode::new_directory();
-
-            if let VfsNode::Directory { children: home_children, .. } = &mut home {
-                // Создаем стандартные папки
-                /*home_children.insert("Documents".to_string(), VfsNode::new_directory());
-                home_children.insert("Downloads".to_string(), VfsNode::new_directory());
-                home_children.insert("Pictures".to_string(), VfsNode::new_directory());
-                home_children.insert("Desktop".to_string(), VfsNode::new_directory());*/
-            }
-
+            // Стандартные папки можно создавать пустыми
             children.insert("home".to_string(), home);
         }
-
         Self {
             root,
             home_directory: "/home".to_string(),
@@ -137,18 +127,19 @@ impl Default for VfsState {
     }
 }
 
-/// Виртуальная файловая система в памяти с персистентностью
+/// Виртуальная файловая система в памяти с персистентностью и шифрованием контента
 #[derive(Clone)]
 pub struct VirtualFileSystem {
-    // Old field kept for backward compatibility during transition
+    // Old field kept for backward compatibility (legacy JSON)
     state: Arc<RwLock<VfsState>>,
     persistence_path: PathBuf,
 
     // New vault-based security fields
     vault_status: Arc<RwLock<crate::api::security::VfsStatus>>,
-    config_path: PathBuf,  // vault.meta
-    data_path: PathBuf,    // vault.bin
-    vault_enabled: bool,   // Feature flag for gradual migration
+    config_path: PathBuf,     // vault.meta
+    data_path: PathBuf,       // vault.bin (Tree Structure)
+    blob_store: Arc<BlobStore>, // Content storage
+    vault_enabled: bool,
 }
 
 impl VirtualFileSystem {
@@ -166,6 +157,10 @@ impl VirtualFileSystem {
         let persistence_path = paths.fs_json;
         let config_path = paths.vault_meta;
         let data_path = paths.vault_bin;
+        
+        // Blob store lives in a directory next to vault.bin called "vault_data"
+        let blob_store_path = data_path.parent().unwrap_or(Path::new(".")).join("vault_data");
+        let blob_store = Arc::new(BlobStore::new(blob_store_path));
 
         // Determine initial vault status
         let vault_status = if config_path.exists() && data_path.exists() {
@@ -174,12 +169,13 @@ impl VirtualFileSystem {
             crate::api::security::VfsStatus::NotInitialized
         };
 
-        // Old state loading for backward compatibility
+        // Загрузка легаси состояния (если есть JSON)
+        // Если Vault есть, но заблокирован, мы показываем это состояние как "Публичное/Легаси"
         let state = if persistence_path.exists() {
-            Self::load_state(&persistence_path).unwrap_or_else(|e| {
-                eprintln!("Предупреждение: не удалось загрузить состояние ({}), создается новое", e.message);
-                VfsState::default()
-            })
+             match Self::load_state(&persistence_path) {
+                 Ok(s) => s,
+                 Err(_) => VfsState::default(),
+             }
         } else {
             VfsState::default()
         };
@@ -190,10 +186,15 @@ impl VirtualFileSystem {
             vault_status: Arc::new(RwLock::new(vault_status)),
             config_path,
             data_path,
+            blob_store,
             vault_enabled: true,
         };
 
-        vfs.save_state()?;
+        // Если это первый запуск (нет файла состояния и нет хранилища), сохраним дефолт
+        if !vfs.persistence_path.exists() && !vfs.data_path.exists() {
+             let _ = vfs.save_state();
+        }
+
         Ok(vfs)
     }
 
@@ -213,6 +214,8 @@ impl VirtualFileSystem {
             .ok_or_else(|| FileSystemError::new("Invalid persistence path"))?;
         let config_path = parent_dir.join("vault.meta");
         let data_path = parent_dir.join("vault.bin");
+        let blob_store_path = parent_dir.join("vault_data");
+        let blob_store = Arc::new(BlobStore::new(blob_store_path));
 
         // Determine initial vault status
         let vault_status = if config_path.exists() && data_path.exists() {
@@ -225,14 +228,14 @@ impl VirtualFileSystem {
 
         // Old state loading for backward compatibility
         let state = if persistence_path.exists() {
-            // Пытаемся загрузить состояние из файла
-            Self::load_state(&persistence_path).unwrap_or_else(|e| {
-                // Если файл поврежден, создаем новое состояние
-                eprintln!("Предупреждение: не удалось загрузить состояние ({}), создается новое", e.message);
-                VfsState::default()
-            })
+            match Self::load_state(&persistence_path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("Warning: could not load state ({}). Defaulting to empty.", e.message);
+                    VfsState::default()
+                }
+            }
         } else {
-            // Создаем новое состояние по умолчанию
             VfsState::default()
         };
 
@@ -242,12 +245,14 @@ impl VirtualFileSystem {
             vault_status: Arc::new(RwLock::new(vault_status)),
             config_path,
             data_path,
+            blob_store,
             vault_enabled: true,  // Enable vault by default
         };
 
         // Сохраняем начальное состояние, если файла не было
-        // Это создаст файл автоматически
-        vfs.save_state()?;
+        if !vfs.persistence_path.exists() {
+            let _ = vfs.save_state();
+        }
 
         Ok(vfs)
     }
@@ -273,11 +278,30 @@ impl VirtualFileSystem {
         let state = self.state.read()
             .map_err(|_| FileSystemError::new("Не удалось получить блокировку для чтения"))?;
 
-        let data = serde_json::to_vec_pretty(&*state)
-            .map_err(|e| FileSystemError::new(format!("Не удалось сериализовать состояние: {}", e)))?;
+        // Check if vault is unlocked
+        let vault_guard = self.vault_status.read().unwrap();
+        if let crate::api::security::VfsStatus::Unlocked { ref session, .. } = *vault_guard {
+            // Serialize with Bincode
+            let serialized = bincode::serialize(&*state)
+                .map_err(|e| FileSystemError::new(format!("Bincode serialization failed: {}", e)))?;
+            
+            // Encrypt
+            use crate::api::security::encrypt_blob;
+            let encrypted_blob = encrypt_blob(&serialized, session)
+                .map_err(|e| FileSystemError::new(format!("Encryption failed: {:?}", e)))?;
 
-        std::fs::write(&self.persistence_path, data)
-            .map_err(|e| FileSystemError::new(format!("Не удалось записать файл состояния: {}", e)))?;
+            // Write to vault.bin
+            use crate::api::security::atomic_write;
+            atomic_write(&self.data_path, &encrypted_blob)
+                .map_err(|e| FileSystemError::new(format!("Failed to write vault data: {:?}", e)))?;
+        } else {
+            // Fallback to JSON if vault is not active (legacy mode)
+            let data = serde_json::to_vec_pretty(&*state)
+                .map_err(|e| FileSystemError::new(format!("Не удалось сериализовать состояние: {}", e)))?;
+
+            std::fs::write(&self.persistence_path, data)
+                .map_err(|e| FileSystemError::new(format!("Не удалось записать файл состояния: {}", e)))?;
+        }
 
         Ok(())
     }
@@ -432,6 +456,9 @@ impl VirtualFileSystem {
         // Save encrypted data atomically
         atomic_write(&self.data_path, &encrypted_blob)?;
 
+        // Update active state in memory
+        *self.state.write().map_err(|_| VaultError::CryptoError("Lock poisoned".into()))? = vfs_state.clone();
+
         // Update status to Unlocked
         *status_guard = VfsStatus::Unlocked {
             fs: vfs_state,
@@ -479,6 +506,9 @@ impl VirtualFileSystem {
         let vfs_state: VfsState = bincode::deserialize(&decrypted)
             .map_err(|e| VaultError::Serialization(format!("Bincode deserialization failed: {}", e)))?;
 
+        // Update active state in memory
+        *self.state.write().map_err(|_| VaultError::CryptoError("Lock poisoned".into()))? = vfs_state.clone();
+
         // Update status to Unlocked
         *status_guard = VfsStatus::Unlocked {
             fs: vfs_state,
@@ -501,10 +531,13 @@ impl VirtualFileSystem {
             return Ok(()); // Already locked, nothing to do
         }
 
-        // Save current state before locking
-        if let VfsStatus::Unlocked { ref fs, ref session } = *status_guard {
+        // Save current state from memory (source of truth) before locking
+        if let VfsStatus::Unlocked { ref session, .. } = *status_guard {
+            let state = self.state.read()
+                .map_err(|_| VaultError::CryptoError("Lock poisoned".into()))?;
+
             // Serialize
-            let serialized = bincode::serialize(fs)
+            let serialized = bincode::serialize(&*state)
                 .map_err(|e| VaultError::Serialization(format!("Bincode serialization failed: {}", e)))?;
 
             // Encrypt
@@ -516,6 +549,15 @@ impl VirtualFileSystem {
 
         // Change status to Locked (this will drop session and trigger Zeroize)
         *status_guard = VfsStatus::Locked;
+
+        // Restore legacy/public state from fs.json (or default)
+        let public_state = if self.persistence_path.exists() {
+            Self::load_state(&self.persistence_path).unwrap_or_else(|_| VfsState::default())
+        } else {
+            VfsState::default()
+        };
+
+        *self.state.write().map_err(|_| VaultError::CryptoError("Lock poisoned".into()))? = public_state;
 
         Ok(())
     }
@@ -536,12 +578,12 @@ impl VirtualFileSystem {
             .map_err(|_| VaultError::CryptoError("Lock poisoned".into()))?;
 
         let session = match *status_guard {
-            VfsStatus::Unlocked { ref session, .. } => session.clone(),
+            VfsStatus::Unlocked { ref session, .. } => session,
             _ => return Err(VaultError::Locked),
         };
 
         // Setup recovery and get recovery key + config
-        let (recovery_key, recovery_config) = RecoveryManager::setup_recovery(&session, channels)?;
+        let (recovery_key, recovery_config) = RecoveryManager::setup_recovery(session, channels)?;
         println!("[VFS] Recovery key and config generated successfully");
 
         // Load existing vault config
@@ -671,7 +713,7 @@ impl VirtualFileSystem {
         Ok(channels)
     }
 
-    /// Check if vault is unlocked
+    /// Check if vault is unlocked (or not initialized/legacy mode)
     fn check_vault_unlocked(&self) -> Result<(), crate::api::vault_error::VaultError> {
         use crate::api::security::*;
         use crate::api::vault_error::VaultError;
@@ -685,8 +727,43 @@ impl VirtualFileSystem {
 
         match *status_guard {
             VfsStatus::Unlocked { .. } => Ok(()),
+            VfsStatus::NotInitialized => Ok(()), // Allow access in setup/legacy mode
             VfsStatus::Locked => Err(VaultError::Locked),
-            VfsStatus::NotInitialized => Err(VaultError::NotInitialized),
+        }
+    }
+
+    /// Deep copy a node (recursively copying blobs)
+    fn deep_copy_node(&self, node: &VfsNode, session: Option<&crate::api::security::VaultSession>) -> FileSystemResult<VfsNode> {
+        match node {
+            VfsNode::File { file_id, size, .. } => {
+                // Read original blob
+                let content = self.blob_store.read(file_id, session)
+                    .map_err(|e| FileSystemError::new(format!("Failed to read source blob during copy: {:?}", e)))?;
+                
+                // Write new blob
+                let new_id = self.blob_store.write(&content, session, None)
+                    .map_err(|e| FileSystemError::new(format!("Failed to write new blob during copy: {:?}", e)))?;
+                
+                Ok(VfsNode::File {
+                    file_id: new_id,
+                    size: *size,
+                    created: current_timestamp(),
+                    modified: current_timestamp(),
+                })
+            }
+            VfsNode::Directory { children, .. } => {
+                let mut new_children = HashMap::new();
+                for (name, child) in children {
+                    let new_child = self.deep_copy_node(child, session)?;
+                    new_children.insert(name.clone(), new_child);
+                }
+                
+                Ok(VfsNode::Directory {
+                    children: new_children,
+                    created: current_timestamp(),
+                    modified: current_timestamp(),
+                })
+            }
         }
     }
 }
@@ -747,6 +824,7 @@ impl FileSystem for VirtualFileSystem {
     }
 
     fn delete_item(&self, path: &str) -> FileSystemResult<()> {
+
         let (parent_parts, name) = self.find_parent_and_name(path)?;
 
         let mut state = self.state.write()
@@ -768,8 +846,33 @@ impl FileSystem for VirtualFileSystem {
 
         match current {
             VfsNode::Directory { children, .. } => {
-                children.remove(&name)
+                // Get the node to be removed
+                let node = children.remove(&name)
                     .ok_or_else(|| FileSystemError::new(format!("Элемент '{}' не найден", name)))?;
+                
+                // Recursively delete contents from blob store if vault is unlocked
+                // Note: If vault is locked, we can't theoretically be here because state is empty?
+                // But if we are partially unlocked or using legacy...
+                // Ideally, we should check if we can delete.
+                
+                // Collect file IDs to delete
+                let mut files_to_delete = Vec::new();
+                fn collect_ids(node: &VfsNode, ids: &mut Vec<String>) {
+                    match node {
+                        VfsNode::File { file_id, .. } => ids.push(file_id.clone()),
+                        VfsNode::Directory { children, .. } => {
+                            for child in children.values() {
+                                collect_ids(child, ids);
+                            }
+                        }
+                    }
+                }
+                collect_ids(&node, &mut files_to_delete);
+                
+                // Delete blobs
+                for file_id in files_to_delete {
+                    let _ = self.blob_store.delete(&file_id);
+                }
             }
             VfsNode::File { .. } => {
                 return Err(FileSystemError::new("Родитель не является директорией"));
@@ -785,6 +888,7 @@ impl FileSystem for VirtualFileSystem {
         if new_name.contains('/') {
             return Err(FileSystemError::new("Новое имя не должно содержать '/'"));
         }
+
 
         let (parent_parts, old_name) = self.find_parent_and_name(old_path)?;
 
@@ -831,6 +935,7 @@ impl FileSystem for VirtualFileSystem {
             return Err(FileSystemError::new("Имя папки не должно содержать '/'"));
         }
 
+
         let normalized = self.normalize_path_internal(path);
 
         let mut state = self.state.write()
@@ -874,7 +979,16 @@ impl FileSystem for VirtualFileSystem {
         if name.contains('/') {
             return Err(FileSystemError::new("Имя файла не должно содержать '/'"));
         }
-
+        
+        // Check vault status to get session
+        let session = {
+            let guard = self.vault_status.read().unwrap();
+            match *guard {
+                crate::api::security::VfsStatus::Unlocked { ref session, .. } => Some(session.clone()), // Clone session locally (it's small)
+                _ => None,
+            }
+        };
+        
         let normalized = self.normalize_path_internal(path);
 
         let mut state = self.state.write()
@@ -901,12 +1015,15 @@ impl FileSystem for VirtualFileSystem {
                     return Err(FileSystemError::new(format!("Файл '{}' уже существует", name)));
                 }
 
-                let file_content = content
-                    .map(|c| c.as_bytes().to_vec())
-                    .unwrap_or_else(Vec::new);
+                let file_content = content.unwrap_or("").as_bytes();
+                
+                // Write to blob store
+                let file_id = self.blob_store.write(file_content, session.as_ref(), None)
+                    .map_err(|e| FileSystemError::new(format!("Failed to write blob: {:?}", e)))?;
 
                 children.insert(name.to_string(), VfsNode::File {
-                    content: file_content,
+                    file_id,
+                    size: file_content.len() as u64,
                     modified: current_timestamp(),
                     created: current_timestamp(),
                 });
@@ -938,16 +1055,26 @@ impl FileSystem for VirtualFileSystem {
     }
 
     fn copy_items(&self, sources: &[String], destination: &str) -> FileSystemResult<()> {
-        // Копируем узлы
-        let nodes_to_copy: Vec<(String, VfsNode)> = sources.iter()
-            .map(|src| {
-                let name = src.split('/').filter(|s| !s.is_empty()).last()
-                    .ok_or_else(|| FileSystemError::new("Некорректный путь источника"))?
-                    .to_string();
-                let node = self.find_node(src)?;
-                Ok((name, node))
-            })
-            .collect::<FileSystemResult<Vec<_>>>()?;
+        // Get session
+        let session = {
+            let guard = self.vault_status.read().unwrap();
+            match *guard {
+                crate::api::security::VfsStatus::Unlocked { ref session, .. } => Some(session.clone()),
+                _ => None,
+            }
+        };
+
+        // Копируем узлы (Deep Copy)
+        let mut nodes_to_insert = Vec::new();
+        for src in sources {
+             let name = src.split('/').filter(|s| !s.is_empty()).last()
+                .ok_or_else(|| FileSystemError::new("Некорректный путь источника"))?
+                .to_string();
+            
+            let node = self.find_node(src)?;
+            let new_node = self.deep_copy_node(&node, session.as_ref())?;
+            nodes_to_insert.push((name, new_node));
+        }
 
         // Вставляем в место назначения
         let normalized_dest = self.normalize_path_internal(destination);
@@ -971,7 +1098,7 @@ impl FileSystem for VirtualFileSystem {
 
         match current {
             VfsNode::Directory { children, modified, .. } => {
-                for (name, node) in nodes_to_copy {
+                for (name, node) in nodes_to_insert {
                     match children.entry(name) {
                         std::collections::hash_map::Entry::Occupied(mut entry) => {
                             entry.get_mut().merge_with(node);
@@ -999,8 +1126,18 @@ impl FileSystem for VirtualFileSystem {
         destination_dir: &str,
         new_name: &str,
     ) -> FileSystemResult<()> {
-        // Получаем узел источника
+        // Get session
+        let session = {
+            let guard = self.vault_status.read().unwrap();
+            match *guard {
+                crate::api::security::VfsStatus::Unlocked { ref session, .. } => Some(session.clone()),
+                _ => None,
+            }
+        };
+
+        // Получаем узел источника и делаем Deep Copy
         let node = self.find_node(source)?;
+        let new_node = self.deep_copy_node(&node, session.as_ref())?;
 
         // Вставляем в место назначения с новым именем
         let normalized_dest = self.normalize_path_internal(destination_dir);
@@ -1026,10 +1163,10 @@ impl FileSystem for VirtualFileSystem {
             VfsNode::Directory { children, modified, .. } => {
                 match children.entry(new_name.to_string()) {
                     std::collections::hash_map::Entry::Occupied(mut entry) => {
-                        entry.get_mut().merge_with(node);
+                        entry.get_mut().merge_with(new_node);
                     }
                     std::collections::hash_map::Entry::Vacant(entry) => {
-                        entry.insert(node);
+                        entry.insert(new_node);
                     }
                 }
                 *modified = current_timestamp();
@@ -1071,12 +1208,25 @@ impl FileSystem for VirtualFileSystem {
         let node = self.find_node(path)?;
 
         match node {
-            VfsNode::File { content, .. } => {
+            VfsNode::File { file_id, size, .. } => {
                 if let Some(max) = max_size {
-                    if content.len() as u64 > max {
+                    if size > max {
                         return Err(FileSystemError::new(format!("Файл слишком большой (>{} байт)", max)));
                     }
                 }
+                
+                // Get session
+                let session = {
+                    let guard = self.vault_status.read().unwrap();
+                    match *guard {
+                        crate::api::security::VfsStatus::Unlocked { ref session, .. } => Some(session.clone()),
+                        _ => None,
+                    }
+                };
+
+                // Read from blob store
+                let content = self.blob_store.read(&file_id, session.as_ref())
+                    .map_err(|e| FileSystemError::new(format!("Failed to read blob: {:?}", e)))?;
 
                 // Пытаемся интерпретировать как UTF-8 текст
                 match String::from_utf8(content.clone()) {
@@ -1097,7 +1247,19 @@ impl FileSystem for VirtualFileSystem {
         let node = self.find_node(path)?;
 
         match node {
-            VfsNode::File { content, .. } => Ok(content.clone()),
+            VfsNode::File { file_id, .. } => {
+                 // Get session
+                let session = {
+                    let guard = self.vault_status.read().unwrap();
+                    match *guard {
+                        crate::api::security::VfsStatus::Unlocked { ref session, .. } => Some(session.clone()),
+                        _ => None,
+                    }
+                };
+
+                self.blob_store.read(&file_id, session.as_ref())
+                    .map_err(|e| FileSystemError::new(format!("Failed to read blob: {:?}", e)))
+            },
             VfsNode::Directory { .. } => {
                 Err(FileSystemError::new(format!("'{}' является директорией", path)))
             }
@@ -1106,6 +1268,15 @@ impl FileSystem for VirtualFileSystem {
 
     fn write_file_content(&self, path: &str, content: &str) -> FileSystemResult<()> {
         let normalized = self.normalize_path_internal(path);
+
+        // Get session
+        let session = {
+            let guard = self.vault_status.read().unwrap();
+            match *guard {
+                crate::api::security::VfsStatus::Unlocked { ref session, .. } => Some(session.clone()),
+                _ => None,
+            }
+        };
 
         let mut state = self.state.write()
             .map_err(|_| FileSystemError::new("Не удалось получить блокировку"))?;
@@ -1136,25 +1307,36 @@ impl FileSystem for VirtualFileSystem {
         // Write file content (create or update)
         match current {
             VfsNode::Directory { children, modified, .. } => {
-                // Check if file exists and update, otherwise create new
+                let bytes = content.as_bytes();
+                
+                // Check if file exists to reuse ID (optimization: prevents new file creation if overwriting)
+                let existing_id = if let Some(VfsNode::File { file_id, .. }) = children.get(*file_name) {
+                    Some(file_id.as_str())
+                } else {
+                    None
+                };
+
+                let file_id = self.blob_store.write(bytes, session.as_ref(), existing_id)
+                    .map_err(|e| FileSystemError::new(format!("Failed to write blob: {:?}", e)))?;
+
                 if let Some(existing_node) = children.get_mut(*file_name) {
-                    match existing_node {
-                        VfsNode::File { content: existing_content, modified: file_modified, .. } => {
-                            *existing_content = content.as_bytes().to_vec();
+                     match existing_node {
+                        VfsNode::File { file_id: ref mut id, size, modified: file_modified, .. } => {
+                            *id = file_id; // Should be same if updated
+                            *size = bytes.len() as u64;
                             *file_modified = current_timestamp();
                         }
-                        VfsNode::Directory { .. } => {
-                            return Err(FileSystemError::new("Путь указывает на директорию"));
-                        }
+                        VfsNode::Directory { .. } => return Err(FileSystemError::new("Путь указывает на директорию")),
                     }
                 } else {
-                    // Create new file
-                    children.insert(file_name.to_string(), VfsNode::File {
-                        content: content.as_bytes().to_vec(),
+                     children.insert(file_name.to_string(), VfsNode::File {
+                        file_id,
+                        size: bytes.len() as u64,
                         modified: current_timestamp(),
                         created: current_timestamp(),
                     });
                 }
+
                 *modified = current_timestamp();
 
                 drop(state);
@@ -1169,6 +1351,15 @@ impl FileSystem for VirtualFileSystem {
 
     fn write_file_bytes(&self, path: &str, content: &[u8]) -> FileSystemResult<()> {
         let normalized = self.normalize_path_internal(path);
+
+        // Get session
+        let session = {
+            let guard = self.vault_status.read().unwrap();
+            match *guard {
+                crate::api::security::VfsStatus::Unlocked { ref session, .. } => Some(session.clone()),
+                _ => None,
+            }
+        };
 
         let mut state = self.state.write()
             .map_err(|_| FileSystemError::new("Не удалось получить блокировку"))?;
@@ -1196,10 +1387,21 @@ impl FileSystem for VirtualFileSystem {
 
         match current {
             VfsNode::Directory { children, modified, .. } => {
+                 // Check if file exists to reuse ID (optimization: prevents new file creation if overwriting)
+                let existing_id = if let Some(VfsNode::File { file_id, .. }) = children.get(*file_name) {
+                    Some(file_id.as_str())
+                } else {
+                    None
+                };
+
+                let file_id = self.blob_store.write(content, session.as_ref(), existing_id)
+                    .map_err(|e| FileSystemError::new(format!("Failed to write blob: {:?}", e)))?;
+
                 if let Some(existing_node) = children.get_mut(*file_name) {
                     match existing_node {
-                        VfsNode::File { content: existing_content, modified: file_modified, .. } => {
-                            *existing_content = content.to_vec();
+                        VfsNode::File { file_id: ref mut id, size, modified: file_modified, .. } => {
+                            *id = file_id;
+                            *size = content.len() as u64;
                             *file_modified = current_timestamp();
                         }
                         VfsNode::Directory { .. } => {
@@ -1208,7 +1410,8 @@ impl FileSystem for VirtualFileSystem {
                     }
                 } else {
                     children.insert(file_name.to_string(), VfsNode::File {
-                        content: content.to_vec(),
+                        file_id,
+                        size: content.len() as u64,
                         modified: current_timestamp(),
                         created: current_timestamp(),
                     });
@@ -1351,5 +1554,94 @@ mod tests {
         let entries = vfs.read_directory(&home).unwrap();
         assert!(entries.iter().any(|e| e.name == "new_name"));
         assert!(!entries.iter().any(|e| e.name == "old_name"));
+    }
+
+    #[test]
+    fn test_vault_encryption_flow() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let persistence_path = dir.path().join("fs.json");
+        
+        // 1. Create VFS
+        #[allow(deprecated)]
+        let vfs = VirtualFileSystem::new(&persistence_path).unwrap();
+        
+        // 2. Initialize Vault
+        vfs.initialize_vault("secret_password").unwrap();
+        
+        // 3. Create a secret file
+        let home = vfs.get_home_directory().unwrap();
+        vfs.create_file(&home, "secret.txt", Some("Top Secret Content")).unwrap();
+        
+        // Verify file exists
+        let content = vfs.read_file_content(&format!("{}/secret.txt", home), None).unwrap();
+        assert_eq!(content, "Top Secret Content");
+        
+        // 4. Lock Vault
+        vfs.lock_vault().unwrap();
+        
+        // 5. Check state is inaccessible
+        let result = vfs.read_file_content(&format!("{}/secret.txt", home), None);
+        assert!(result.is_err());
+        // When locked, the VFS state is reset to default (empty /home), so the file node doesn't exist.
+        // This confirms metadata is hidden.
+        let err_msg = result.unwrap_err().message;
+        assert!(err_msg.contains("Путь не найден") || err_msg.contains("Vault locked"));
+        
+        // 6. Unlock Vault
+        vfs.unlock_vault("secret_password").unwrap();
+        
+        // 7. Verify file is back
+        let content_restored = vfs.read_file_content(&format!("{}/secret.txt", home), None).unwrap();
+        assert_eq!(content_restored, "Top Secret Content");
+        
+        // 8. Verify persistence on disk
+        #[allow(deprecated)]
+        let vfs2 = VirtualFileSystem::new(&persistence_path).unwrap();
+        // It should start locked
+        assert_eq!(vfs2.get_vault_status(), "LOCKED");
+        
+        // Unlock
+        vfs2.unlock_vault("secret_password").unwrap();
+        let content2 = vfs2.read_file_content(&format!("{}/secret.txt", home), None).unwrap();
+        assert_eq!(content2, "Top Secret Content");
+    }
+
+    #[test]
+    fn test_legacy_mode_operations() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let persistence_path = dir.path().join("fs.json");
+        
+        // 1. Create VFS (defaults to NotInitialized)
+        #[allow(deprecated)]
+        let vfs = VirtualFileSystem::new(&persistence_path).unwrap();
+        
+        assert_eq!(vfs.get_vault_status(), "UNINITIALIZED");
+        
+        // 2. Create folder
+        let home = vfs.get_home_directory().unwrap();
+        vfs.create_folder(&home, "New Folder").unwrap();
+        
+        // Verify folder exists
+        let entries = vfs.read_directory(&home).unwrap();
+        assert!(entries.iter().any(|e| e.name == "New Folder"));
+        
+        // 3. Create file (plaintext)
+        vfs.create_file(&format!("{}/New Folder", home), "test.txt", Some("Hello World")).unwrap();
+        
+        // Verify content
+        let content = vfs.read_file_content(&format!("{}/New Folder/test.txt", home), None).unwrap();
+        assert_eq!(content, "Hello World");
+        
+        // 4. Rename folder
+        vfs.rename_item(&format!("{}/New Folder", home), "Renamed Folder").unwrap();
+        
+        // 5. Delete folder
+        vfs.delete_item(&format!("{}/Renamed Folder", home)).unwrap();
+        
+        // Verify gone
+        let entries_after = vfs.read_directory(&home).unwrap();
+        assert!(!entries_after.iter().any(|e| e.name == "Renamed Folder"));
     }
 }

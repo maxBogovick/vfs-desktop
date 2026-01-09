@@ -66,7 +66,7 @@ export function useCommands(handlers: CommandHandlers) {
     success('Selected all', `${allFiles.length} items selected`);
   };
 
-  const closeTabCommand = (tabsCount: number, closeTab: (tabId: string) => void, activeTabId: string) => {
+  const closeTabCommand = (tabsCount: number, closeTab: (tabId: number) => void, activeTabId: number) => {
     if (tabsCount > 1) {
       closeTab(activeTabId);
       success('Tab closed', 'Tab closed successfully');

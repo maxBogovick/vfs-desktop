@@ -1,5 +1,5 @@
 import { ref } from 'vue';
-import type { FileConflict, ConflictResolution, ConflictAction } from '../types';
+import type { FileConflict, ConflictResolution } from '../types';
 
 const currentConflict = ref<FileConflict | null>(null);
 const isConflictDialogOpen = ref(false);

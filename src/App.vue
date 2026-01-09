@@ -57,7 +57,7 @@ import { useWidgets } from './composables/useWidgets';
 import { useClipboard } from './composables/useClipboard';
 import { createKeyboardShortcuts } from './utils/shortcuts';
 
-import type {FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange, FileSystemBackend} from './types';
+import type {FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange} from './types';
 
 // File System
 const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory, writeFileContent, extractArchive, createArchive } = useFileSystem();
@@ -95,7 +95,6 @@ const {
   clearSelection,
   selectAll,
   focusedId,
-  isFocused,
   setFocused,
   moveFocusUp,
   moveFocusDown,
@@ -303,7 +302,7 @@ const { groupBy, groupByOptions, groupFiles } = useGrouping();
 const { refreshAllPanels } = useGlobalRefresh();
 
 // Widgets
-const { isWidgetActive, toggleWidget, showWidgetSelector, closeWidgetSelector, widgets } = useWidgets();
+const { toggleWidget, showWidgetSelector, closeWidgetSelector } = useWidgets();
 
 // Clipboard
 const { hasClipboardItems } = useClipboard();
@@ -479,9 +478,7 @@ const handleSidebarDrop = async (targetPath: string, event: DragEvent) => {
   await refreshCurrentDirectory();
 };
 
-const openCommandPalette = () => {
-  isCommandPaletteOpen.value = true;
-};
+
 
 // Toggle bookmark for current directory
 const handleToggleBookmark = async () => {
@@ -696,7 +693,7 @@ const commands = useCommands({
             try {
               navigateTo(path.split('/').filter(p => p));
             } catch (err) {
-              const { error } = useFileOperations();
+              console.error(err);
             }
           }
           closeInput();
@@ -709,7 +706,7 @@ const commands = useCommands({
   onCopyPath: (selectedItems: FileItem[]) => commands.copyPathCommand(selectedItems),
   onSelectAll: (allFiles: FileItem[]) => commands.selectAllCommand(allFiles, selectAll),
   onNewTab: addTab,
-  onCloseTab: () => commands.closeTabCommand(tabs.value.length, closeTab, activeTabId.value),
+  onCloseTab: () => commands.closeTabCommand(tabs.value.length, closeTab, activeTabId.value ?? 0),
   onSettings: () => { settingsInitialTab.value = 'general'; showSettings.value = true; },
 });
 
@@ -1643,7 +1640,7 @@ onMounted(async () => {
     <!-- Toolbar -->
     <Toolbar
         :tabs="isDualMode ? activePanelTabs : tabs"
-        :active-tab-id="isDualMode ? activePanelTabId : activeTabId"
+        :active-tab-id="(isDualMode ? activePanelTabId : activeTabId) ?? 0"
         :current-path="isDualMode ? activePanelPath : currentPath"
         :view-mode="viewMode"
         :panel-mode="panelMode"
