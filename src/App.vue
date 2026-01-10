@@ -28,6 +28,7 @@ import TextEditor from './components/TextEditor.vue';
 import VaultOverlay from './components/VaultOverlay.vue';
 import WidgetLayer from './components/WidgetLayer.vue';
 import WidgetSelector from './components/WidgetSelector.vue';
+import ShareDialog from './components/ShareDialog.vue';
 
 import { useFileSystem } from './composables/useFileSystem';
 import { useVault } from './composables/useVault';
@@ -347,6 +348,8 @@ const showBatchAttributeDialog = ref(false);
 const showBatchQueue = ref(false);
 const showOperationsQueue = ref(false);
 const showQueueSettings = ref(false);
+const showShareDialog = ref(false);
+const shareInfo = ref<{ url: string; qr_svg: string; filename: string } | null>(null);
 const batchOperationFiles = ref<FileItem[]>([]);
 const showTextEditor = ref(false);
 const editorFile = ref<FileItem | null>(null);
@@ -1529,6 +1532,35 @@ const contextMenuHandlers = {
   queueExtract: async () => {
     await handleQueueOperation('extract');
   },
+  share: async () => {
+    if (contextMenu.value?.item) {
+      const { success, error } = useNotifications();
+      
+      let currentFs: string | undefined = undefined;
+      if (isDualMode.value) {
+          currentFs = activePanel.value === 'left' ? leftPanelFilesystem.value : rightPanelFilesystem.value;
+      } else {
+          try {
+            const config = await invoke<any>('get_config');
+            currentFs = config.filesystem_backend === 'virtual' ? 'virtual' : 'real';
+          } catch (e) {
+            console.error('Failed to get config for share:', e);
+          }
+      }
+
+      try {
+        const result = await invoke<{ url: string; qr_svg: string; filename: string }>('share_file', {
+          path: contextMenu.value.item.path,
+          filesystem: currentFs
+        });
+        shareInfo.value = result;
+        showShareDialog.value = true;
+        success('Ready to Share', `Scan QR code to download ${result.filename}`);
+      } catch (err) {
+        error('Share failed', err instanceof Error ? err.message : String(err));
+      }
+    }
+  },
 };
 
 // Batch operations handlers
@@ -1644,14 +1676,44 @@ const handleCompress = async (format: 'zip' | 'tar' | 'tar.gz') => {
 
 // Watch current path and load directory
 watch(currentPath, async () => {
-  const pathString = await fileOps.getCurrentDirectory(currentPath.value);
-  await loadDirectory(pathString);
-  clearSelection();
-  // Устанавливаем фокус на первый элемент после загрузки
-  if (processedFiles.value.length > 0) {
-    setFocused(processedFiles.value[0].id);
-  } else {
-    setFocused(null);
+  try {
+    const pathString = await fileOps.getCurrentDirectory(currentPath.value);
+    // Backend enum serializes to lowercase "virtual"
+    const config = await invoke<any>('get_config');
+    const isVirtualFS = config.filesystem_backend === 'virtual';
+    const currentFs = isVirtualFS ? 'virtual' : 'real';
+
+    await loadDirectory(pathString, currentFs);
+    clearSelection();
+    // Устанавливаем фокус на первый элемент после загрузки
+    if (processedFiles.value.length > 0) {
+      setFocused(processedFiles.value[0].id);
+    } else {
+      setFocused(null);
+    }
+  } catch (error) {
+    // If path doesn't exist (e.g., restored path not in virtual FS), navigate to home
+    console.warn('[App] Failed to load path, navigating to home:', error);
+
+    // Get the correct filesystem backend
+    const config = await invoke<any>('get_config');
+    const isVirtualFS = config.filesystem_backend === 'virtual';
+    const currentFs = isVirtualFS ? 'virtual' : 'real';
+
+    // Get home directory for the correct filesystem
+    const home = await getHomeDirectory(currentFs);
+    const homePath = home.split('/').filter(Boolean);
+
+    // Only navigate if we're not already trying to load home
+    const currentPathStr = currentPath.value.join('/');
+    const homePathStr = homePath.join('/');
+
+    if (currentPathStr !== homePathStr) {
+      navigateTo(homePath);
+    } else {
+      // If we're already at home and it still fails, clear files to avoid infinite loop
+      console.error('[App] Failed to load home directory, clearing files');
+    }
   }
 }, { immediate: true });
 
@@ -1776,23 +1838,42 @@ onMounted(async () => {
     }
   }
 
-  // Восстановить табы если есть (только если НЕ dual mode)
+  // Восстановить табы если есть (для обоих режимов)
   if (!isDualMode.value) {
     // Check current filesystem backend configuration
     const config = await invoke<any>('get_config');
+    // Backend enum serializes to lowercase "virtual"
     const isVirtualFS = config.filesystem_backend === 'virtual';
 
-    if (uiState && uiState.tabs && uiState.tabs.length > 0 && !isVirtualFS) {
-      // Only restore tabs for Real FS (tabs contain real paths)
+    // Allow restoration for both Real and Virtual FS
+    if (uiState && uiState.tabs && uiState.tabs.length > 0) {
       console.log('[App] ✅ Restoring', uiState.tabs.length, 'tabs');
 
-      tabs.value = uiState.tabs.map(tabState => ({
-        id: tabState.id,
-        path: tabState.path,
-        name: tabState.name,
-        history: [tabState.path],
-        historyIndex: 0,
-      }));
+      // For Virtual FS, validate paths and use home directory if path doesn't exist
+      if (isVirtualFS) {
+        const currentFs = 'virtual';
+        const home = await getHomeDirectory(currentFs);
+        const homePath = home.split('/').filter(Boolean);
+
+        tabs.value = uiState.tabs.map(tabState => ({
+          id: tabState.id,
+          path: homePath, // Use home directory for Virtual FS
+          name: 'Home',
+          history: [homePath],
+          historyIndex: 0,
+        }));
+
+        console.log('[App] ⚠️ Virtual FS: Replaced restored paths with home directory');
+      } else {
+        // Real FS: restore paths as-is
+        tabs.value = uiState.tabs.map(tabState => ({
+          id: tabState.id,
+          path: tabState.path,
+          name: tabState.name,
+          history: [tabState.path],
+          historyIndex: 0,
+        }));
+      }
 
       // Восстановить активный таб
       if (uiState.active_tab_id) {
@@ -1800,15 +1881,16 @@ onMounted(async () => {
         activeTabId.value = uiState.active_tab_id;
       }
     } else if (uiState && uiState.last_path && uiState.last_path.length > 0 && !isVirtualFS) {
-      // Only restore last path for Real FS
+      // Only restore last path for Real FS (Virtual FS paths won't exist)
       console.log('[App] ✅ Restoring last path:', uiState.last_path);
       navigateTo(uiState.last_path);
     } else {
-      // For Virtual FS or no saved state, navigate to home directory
-      console.log('[App] ℹ️ No tabs/path to restore or Virtual FS - navigating to home');
-      const home = await getHomeDirectory();
+      // No saved state or empty - default behavior
+      console.log('[App] ℹ️ No tabs/path to restore - navigating to home');
+      const currentFs = isVirtualFS ? 'virtual' : 'real';
+      const home = await getHomeDirectory(currentFs);
       console.log('[App] 🏠 Home directory:', home);
-      await loadDirectory(home);
+      await loadDirectory(home, currentFs);
     }
   } else {
     // Dual mode: check if we need to initialize home for virtual FS
@@ -1816,8 +1898,9 @@ onMounted(async () => {
     const isVirtualFS = config.filesystem_backend === 'virtual';
     if (isVirtualFS && (!uiState || !uiState.dual_panel_config)) {
       console.log('[App] ℹ️ Virtual FS in dual mode - initializing with home');
-      const home = await getHomeDirectory();
-      await loadDirectory(home);
+      const currentFs = 'virtual';
+      const home = await getHomeDirectory(currentFs);
+      await loadDirectory(home, currentFs);
     }
   }
 
@@ -2045,6 +2128,7 @@ onMounted(async () => {
         @queue-delete="contextMenuHandlers.queueDelete"
         @queue-archive="contextMenuHandlers.queueArchive"
         @queue-extract="contextMenuHandlers.queueExtract"
+        @share="contextMenuHandlers.share"
         @close="closeContextMenu"
     />
 
@@ -2193,6 +2277,13 @@ onMounted(async () => {
     <WidgetSelector
       :is-open="showWidgetSelector"
       @close="closeWidgetSelector"
+    />
+
+    <!-- Share Dialog -->
+    <ShareDialog
+      :is-open="showShareDialog"
+      :share-info="shareInfo"
+      @close="showShareDialog = false"
     />
   </div>
 </template>

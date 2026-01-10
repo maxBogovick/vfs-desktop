@@ -79,8 +79,8 @@ export function useFileSystem() {
       // Check if path is an archive (ends with archive extension)
       // This is a simple check for MVP. Robust check would require backend helper.
       if (/\.(zip|tar|gz|tgz)$/i.test(path)) {
-         const entries: FileSystemEntry[] = await invoke('list_archive_contents', { archivePath: path });
-         files.value = entriesToFileItems(entries);
+         const entries = await listArchiveContents(path, panelFs);
+         files.value = entries;
       } else {
          const entries: FileSystemEntry[] = await invoke('read_directory', { path, panelFs: panelFs || null });
          files.value = entriesToFileItems(entries);
@@ -308,9 +308,9 @@ export function useFileSystem() {
   };
 
   // List archive contents
-  const listArchiveContents = async (archivePath: string): Promise<FileItem[]> => {
+  const listArchiveContents = async (archivePath: string, panelFs?: string): Promise<FileItem[]> => {
     try {
-      const entries: FileSystemEntry[] = await invoke('list_archive_contents', { archivePath });
+      const entries: FileSystemEntry[] = await invoke('list_archive_contents', { archivePath, panelFs: panelFs || null });
       return entriesToFileItems(entries);
     } catch (e) {
       throw new Error(e instanceof Error ? e.message : 'Failed to list archive contents');

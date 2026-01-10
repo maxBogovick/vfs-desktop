@@ -50,7 +50,10 @@ const showHidden = ref(false);
 const {
   files,
   isLoading,
-  loadDirectory
+  loadDirectory,
+  getHomeDirectory,
+  createFolder,
+  createFile
 } = useFileSystem();
 
 // Computed: Sorted and filtered files
@@ -137,7 +140,6 @@ const getSelected = () => getSelectedItems(files.value);
 
 // Helper to get current directory path
 const getCurrentDirectoryPath = async (): Promise<string> => {
-  const { getHomeDirectory } = useFileSystem();
   let pathString = currentPath.value.join('/');
   if (pathString && !pathString.startsWith('/')) {
     pathString = '/' + pathString;
@@ -183,14 +185,34 @@ watch(() => props.tabs, (newTabs) => {
 
 // Watch current path and load directory
 watch(currentPath, async () => {
-  const pathString = await getCurrentDirectoryPath();
-  await loadDirectory(pathString, props.panelFilesystem);
-  clearSelection();
-  // Set focus on first element after loading
-  if (files.value.length > 0) {
-    focusedId.value = files.value[0].id;
-  } else {
-    focusedId.value = null;
+  try {
+    const pathString = await getCurrentDirectoryPath();
+    await loadDirectory(pathString, props.panelFilesystem);
+    clearSelection();
+    // Set focus on first element after loading
+    if (files.value.length > 0) {
+      focusedId.value = files.value[0].id;
+    } else {
+      focusedId.value = null;
+    }
+  } catch (error) {
+    // If path doesn't exist (e.g., restored path not in virtual FS), navigate to home
+    console.warn('[FilePanel] Failed to load path, navigating to home:', error);
+    const homePath = await getHomeDirectory(props.panelFilesystem);
+
+    // Update tab path to home directory
+    const homePathArray = homePath.split('/').filter(Boolean);
+    const currentPathStr = currentPath.value.join('/');
+    const homePathStr = homePathArray.join('/');
+
+    // Only navigate if we're not already trying to load home
+    if (currentPathStr !== homePathStr && activeTab.value) {
+      updateTabPath(homePathArray);
+    } else {
+      // If we're already at home and it still fails, clear files to avoid infinite loop
+      console.error('[FilePanel] Failed to load home directory, clearing files');
+      files.value = [];
+    }
   }
 }, { immediate: true });
 
@@ -459,7 +481,6 @@ const handleCreateFile = async (payload: { name: string; isFolder: boolean; temp
   }
 
   try {
-    const { createFolder, createFile } = useFileSystem();
     const pathString = await getCurrentDirectoryPath();
 
     if (payload.isFolder) {

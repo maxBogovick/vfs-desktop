@@ -138,7 +138,10 @@ pub fn run() {
             queue_get_config,
             queue_pause_operation,
             queue_resume_operation,
-            queue_run_now
+            queue_run_now,
+            // Share commands
+            api::share::share_file,
+            api::share::stop_share,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

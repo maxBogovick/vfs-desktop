@@ -248,8 +248,8 @@ pub fn extract_archive(archive_path: String, destination_path: String) -> Result
 }
 
 #[tauri::command]
-pub fn list_archive_contents(archive_path: String) -> Result<Vec<FileSystemEntry>, String> {
-    crate::archives::list_archive_contents(&archive_path)
+pub fn list_archive_contents(archive_path: String, panel_fs: Option<String>) -> Result<Vec<FileSystemEntry>, String> {
+    crate::archives::list_archive_contents_with_fs(&archive_path, panel_fs.as_deref())
 }
 
 #[tauri::command]

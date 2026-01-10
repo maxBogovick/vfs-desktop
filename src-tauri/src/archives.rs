@@ -18,14 +18,41 @@ pub fn is_archive(path: &str) -> bool {
 }
 
 pub fn list_archive_contents(path: &str) -> Result<Vec<FileSystemEntry>, String> {
+    list_archive_contents_with_fs(path, None)
+}
+
+pub fn list_archive_contents_with_fs(path: &str, panel_fs: Option<&str>) -> Result<Vec<FileSystemEntry>, String> {
+    let is_real = panel_fs.is_none() || panel_fs == Some("real");
+    
+    if is_real {
+        let path_obj = Path::new(path);
+        if let Some(ext) = path_obj.extension() {
+            let ext_str = ext.to_string_lossy().to_lowercase();
+            return match ext_str.as_str() {
+                "zip" => list_zip(path),
+                "tar" => list_tar(path),
+                "gz" | "tgz" => list_tar_gz(path),
+                _ => Err(format!("Unsupported archive format: {}", ext_str)),
+            };
+        } else {
+            return Err("No extension found".to_string());
+        }
+    }
+
+    // Generic implementation (In-Memory)
+    let archive_bytes = API.files.read_file_bytes(path, panel_fs)
+        .map_err(|e| format!("Failed to read archive: {}", e))?;
+    
+    let cursor = Cursor::new(archive_bytes);
+    
     let path_obj = Path::new(path);
     if let Some(ext) = path_obj.extension() {
         let ext_str = ext.to_string_lossy().to_lowercase();
         match ext_str.as_str() {
-            "zip" => list_zip(path),
-            "tar" => list_tar(path),
-            "gz" | "tgz" => list_tar_gz(path),
-            _ => Err(format!("Unsupported archive format: {}", ext_str)),
+            "zip" => list_zip_generic(cursor, path),
+            "tar" => list_tar_generic(cursor, path),
+            "gz" | "tgz" => list_tar_gz_generic(cursor, path),
+            _ => Err(format!("Unsupported archive format for virtual fs: {}", ext_str)),
         }
     } else {
         Err("No extension found".to_string())
@@ -91,15 +118,14 @@ pub fn create_archive_with_fs(source_paths: Vec<String>, destination_path: Strin
     let dest_path = Path::new(&destination_path);
     let ext = dest_path.extension()
         .and_then(|e| e.to_str())
-        .ok_or("Destination file has no extension")?
-        .to_lowercase();
+        .ok_or("Destination file has no extension")?;
     let is_tar_gz = destination_path.ends_with(".tar.gz") || destination_path.ends_with(".tgz");
 
     if is_real_source && is_real_dest {
         if is_tar_gz {
             create_tar_gz(&source_paths, &destination_path)
         } else {
-            match ext.as_str() {
+            match ext.to_lowercase().as_str() {
                 "zip" => create_zip(&source_paths, &destination_path),
                 "tar" => create_tar(&source_paths, &destination_path),
                 _ => Err(format!("Unsupported archive format: {}", ext)),
@@ -111,7 +137,7 @@ pub fn create_archive_with_fs(source_paths: Vec<String>, destination_path: Strin
         let result_buffer = if is_tar_gz {
             create_tar_gz_generic(buffer, &source_paths, source_fs)?
         } else {
-            match ext.as_str() {
+            match ext.to_lowercase().as_str() {
                 "zip" => create_zip_generic(buffer, &source_paths, source_fs)?,
                 "tar" => create_tar_generic(buffer, &source_paths, source_fs)?,
                 _ => return Err(format!("Unsupported archive format: {}", ext)),
@@ -129,7 +155,11 @@ pub fn create_archive_with_fs(source_paths: Vec<String>, destination_path: Strin
 
 fn list_zip(path: &str) -> Result<Vec<FileSystemEntry>, String> {
     let file = File::open(path).map_err(|e| e.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    list_zip_generic(file, path)
+}
+
+fn list_zip_generic<R: Read + Seek>(reader: R, archive_path: &str) -> Result<Vec<FileSystemEntry>, String> {
+    let mut archive = zip::ZipArchive::new(reader).map_err(|e| e.to_string())?;
     let mut entries = Vec::new();
 
     for i in 0..archive.len() {
@@ -144,7 +174,7 @@ fn list_zip(path: &str) -> Result<Vec<FileSystemEntry>, String> {
         let modified = Some(0);
 
         entries.push(FileSystemEntry {
-            path: format!("{}/{}", path, name),
+            path: format!("{}/{}", archive_path, name),
             name,
             is_dir,
             is_file: !is_dir,
@@ -315,7 +345,11 @@ fn add_to_zip_recursive<W: Write + Seek>(
 
 fn list_tar(path: &str) -> Result<Vec<FileSystemEntry>, String> {
     let file = File::open(path).map_err(|e| e.to_string())?;
-    let mut archive = tar::Archive::new(file);
+    list_tar_generic(file, path)
+}
+
+fn list_tar_generic<R: Read>(reader: R, archive_path: &str) -> Result<Vec<FileSystemEntry>, String> {
+    let mut archive = tar::Archive::new(reader);
     let mut entries = Vec::new();
 
     for file in archive.entries().map_err(|e| e.to_string())? {
@@ -327,7 +361,7 @@ fn list_tar(path: &str) -> Result<Vec<FileSystemEntry>, String> {
         let modified = header.mtime().unwrap_or(0);
 
         entries.push(FileSystemEntry {
-            path: format!("{}/{}", path, path_str),
+            path: format!("{}/{}", archive_path, path_str),
             name: path_str,
             is_dir,
             is_file: !is_dir,
@@ -450,30 +484,12 @@ fn add_to_tar_recursive<W: Write>(
 
 fn list_tar_gz(path: &str) -> Result<Vec<FileSystemEntry>, String> {
     let file = File::open(path).map_err(|e| e.to_string())?;
-    let tar = flate2::read::GzDecoder::new(file);
-    let mut archive = tar::Archive::new(tar);
-    let mut entries = Vec::new();
+    list_tar_gz_generic(file, path)
+}
 
-    for file in archive.entries().map_err(|e| e.to_string())? {
-        let file = file.map_err(|e| e.to_string())?;
-        let header = file.header();
-        let path_str = file.path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
-        let is_dir = header.entry_type().is_dir();
-        let size = header.size().unwrap_or(0);
-        let modified = header.mtime().unwrap_or(0);
-
-        entries.push(FileSystemEntry {
-            path: format!("{}/{}", path, path_str),
-            name: path_str,
-            is_dir,
-            is_file: !is_dir,
-            size: Some(size),
-            modified: Some(modified),
-            created: None,
-            accessed: None,
-        });
-    }
-    Ok(entries)
+fn list_tar_gz_generic<R: Read>(reader: R, archive_path: &str) -> Result<Vec<FileSystemEntry>, String> {
+    let tar = flate2::read::GzDecoder::new(reader);
+    list_tar_generic(tar, archive_path)
 }
 
 fn extract_tar_gz(archive_path: &str, destination_path: &str) -> Result<(), String> {

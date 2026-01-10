@@ -36,6 +36,7 @@ interface Emits {
   (e: 'queueDelete'): void;
   (e: 'queueArchive'): void;
   (e: 'queueExtract'): void;
+  (e: 'share'): void;
   (e: 'close'): void;
 }
 
@@ -99,6 +100,16 @@ const handleAction = (action: keyof Emits) => {
         <span class="w-4">✂️</span>
         <span class="flex-1">Cut</span>
         <span class="text-[9px] text-gray-400">Ctrl+X</span>
+      </div>
+
+      <!-- Share via QR -->
+      <div
+        v-if="item.type !== 'folder' && item.type !== 'drive' && item.type !== 'system'"
+        @click="handleAction('share')"
+        class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+      >
+        <span class="w-4">📱</span>
+        <span class="flex-1">Share via QR</span>
       </div>
 
       <div class="border-t border-[#D0D0BF] my-1"></div>

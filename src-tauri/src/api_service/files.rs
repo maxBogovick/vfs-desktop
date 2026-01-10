@@ -19,6 +19,7 @@ use crate::api::{RealFileSystem, virtual_fs::VirtualFileSystem};
 use crate::config::FileSystemBackend;
 use crate::core::FileSystem;
 use crate::state::APP_CONFIG;
+use crate::api_service::vault::VAULT_FS;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -97,12 +98,21 @@ impl FileService {
             }
             FileSystemBackend::Virtual => {
                 tracing::debug!("Using VirtualFileSystem backend");
-                let virtual_fs = VirtualFileSystem::new_with_config()
-                    .unwrap_or_else(|e| {
-                        tracing::error!("Failed to initialize VirtualFileSystem: {}", e.message);
-                        panic!("Cannot initialize VirtualFileSystem: {}", e.message);
-                    });
-                FileSystemInstance::Virtual(virtual_fs)
+                
+                // Use shared VAULT_FS singleton to ensure we share the unlocked state
+                let mut vfs_guard = VAULT_FS.lock().unwrap();
+                
+                if vfs_guard.is_none() {
+                    let virtual_fs = VirtualFileSystem::new_with_config()
+                        .unwrap_or_else(|e| {
+                            tracing::error!("Failed to initialize VirtualFileSystem: {}", e.message);
+                            panic!("Cannot initialize VirtualFileSystem: {}", e.message);
+                        });
+                    *vfs_guard = Some(virtual_fs);
+                }
+                
+                let vfs = vfs_guard.as_ref().unwrap().clone();
+                FileSystemInstance::Virtual(vfs)
             }
         }
     }
