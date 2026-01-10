@@ -525,21 +525,21 @@ if __name__ == "__main__":
                     if pattern == "**" {
                         return true;
                     }
-                    // Простая проверка паттерна
+                    
+                    // Improved wildcard matching
                     let pattern_parts: Vec<&str> = pattern.split("**").collect();
-                    if pattern_parts.len() == 2 {
-                        let prefix = pattern_parts[0].trim_matches('/');
-                        let suffix = pattern_parts[1].trim_matches('/');
-
-                        if !prefix.is_empty() && !path.contains(prefix) {
+                    let mut current_idx = 0;
+                    
+                    for part in pattern_parts {
+                        if part.is_empty() { continue; }
+                        
+                        if let Some(idx) = path[current_idx..].find(part) {
+                            current_idx += idx + part.len();
+                        } else {
                             return false;
                         }
-                        if !suffix.is_empty() && !path.contains(suffix) {
-                            return false;
-                        }
-                        return true;
                     }
-                    path.contains(pattern)
+                    return true;
                 })
             })
             .cloned()

@@ -431,3 +431,93 @@ export interface CommandResult {
   exit_code: number;
   success: boolean;
 }
+
+// ===== Operations Queue Types =====
+
+export type QueuedOperationType =
+  | 'copy'
+  | 'move'
+  | 'delete'
+  | 'archive'
+  | 'extract'
+  | 'batch_rename'
+  | 'batch_attribute'
+  | 'custom';
+
+export type QueueOperationStatus =
+  | 'queued'
+  | 'scheduled'
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export type OperationPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface RetryPolicy {
+  maxAttempts: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  multiplier: number;
+  enabled: boolean;
+}
+
+export interface RetryAttempt {
+  attemptNumber: number;
+  timestamp: string;
+  errorMessage: string;
+  nextRetryAt?: string;
+}
+
+export interface QueuedOperationParams {
+  type: string;
+  [key: string]: any;
+}
+
+export interface QueuedOperation {
+  id: string;
+  operationType: QueuedOperationType;
+  status: QueueOperationStatus;
+  priority: OperationPriority;
+  params: QueuedOperationParams;
+
+  // Metadata
+  createdAt: string;
+  scheduledAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+
+  // Progress
+  progressTrackerId?: string;
+
+  // Retry mechanism
+  retryPolicy: RetryPolicy;
+  retryAttempts: RetryAttempt[];
+  currentAttempt: number;
+
+  // Results
+  errorMessage?: string;
+  errorLogs: string[];
+
+  // User metadata
+  tags: string[];
+  description?: string;
+}
+
+export interface QueueConfig {
+  maxParallelOperations: number;
+  autoStart: boolean;
+  persistOnChange: boolean;
+  checkScheduledIntervalSec: number;
+}
+
+export interface QueueStatistics {
+  total: number;
+  queued: number;
+  scheduled: number;
+  running: number;
+  completed: number;
+  failed: number;
+  cancelled: number;
+}

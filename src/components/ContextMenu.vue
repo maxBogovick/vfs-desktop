@@ -31,6 +31,11 @@ interface Emits {
   (e: 'newFolder'): void;
   (e: 'newFile'): void;
   (e: 'selectAll'): void;
+  (e: 'queueCopy'): void;
+  (e: 'queueMove'): void;
+  (e: 'queueDelete'): void;
+  (e: 'queueArchive'): void;
+  (e: 'queueExtract'): void;
   (e: 'close'): void;
 }
 
@@ -94,6 +99,65 @@ const handleAction = (action: keyof Emits) => {
         <span class="w-4">✂️</span>
         <span class="flex-1">Cut</span>
         <span class="text-[9px] text-gray-400">Ctrl+X</span>
+      </div>
+
+      <div class="border-t border-[#D0D0BF] my-1"></div>
+
+      <!-- Add to Queue (with operation submenu) -->
+      <div
+        class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2 group relative"
+      >
+        <span class="w-4">⏱️</span>
+        <span class="flex-1">Add to Queue</span>
+        <span class="text-[9px] text-gray-400">►</span>
+
+        <!-- Operations Submenu -->
+        <div class="hidden group-hover:block absolute left-full top-0 bg-white border border-[#919B9C] shadow-lg rounded text-[11px] py-1 min-w-[180px]">
+          <!-- Copy to... -->
+          <div
+            @click.stop="handleAction('queueCopy')"
+            class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+          >
+            <span>📋 Copy to...</span>
+          </div>
+
+          <!-- Move to... -->
+          <div
+            @click.stop="handleAction('queueMove')"
+            class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+          >
+            <span>➡️ Move to...</span>
+          </div>
+
+          <div class="border-t border-[#D0D0BF] my-1"></div>
+
+          <!-- Delete -->
+          <div
+            @click.stop="handleAction('queueDelete')"
+            class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+          >
+            <span>🗑️ Delete</span>
+          </div>
+
+          <div class="border-t border-[#D0D0BF] my-1"></div>
+
+          <!-- Archive -->
+          <div
+            @click.stop="handleAction('queueArchive')"
+            class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+          >
+            <span>📦 Create Archive...</span>
+          </div>
+
+          <!-- Extract (only for archives) -->
+          <div
+            v-if="item.type === 'archive'"
+            @click.stop="handleAction('queueExtract')"
+            class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2"
+          >
+            <span>📂 Extract Here</span>
+          </div>
+        </div>
       </div>
 
       <!-- Paste -->

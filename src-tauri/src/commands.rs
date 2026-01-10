@@ -974,3 +974,126 @@ fn migrate_vault_files(old_paths: &crate::config::VaultPaths, new_paths: &crate:
     tracing::info!("Vault migration completed from {:?} to {:?}", old_paths.dir, new_paths.dir);
     Ok(())
 }
+
+// ====== Queue Management Commands ======
+
+use crate::queue::{
+    QUEUE_MANAGER, QueuedOperation, OperationParams, OperationPriority, QueueConfig,
+    QueuedOperationType,
+};
+
+#[tauri::command]
+pub fn queue_add_operation(
+    operation_type: String,
+    params: serde_json::Value,
+    priority: Option<String>,
+    scheduled_at: Option<String>,
+    retry_enabled: Option<bool>,
+    description: Option<String>,
+    tags: Option<Vec<String>>,
+) -> Result<String, String> {
+    use tracing::info;
+
+    info!("queue_add_operation called with type: {}", operation_type);
+    info!("params: {}", serde_json::to_string_pretty(&params).unwrap_or_default());
+
+    // Parse operation type
+    let op_type: QueuedOperationType = serde_json::from_value(serde_json::json!(operation_type))
+        .map_err(|e| {
+            let err_msg = format!("Invalid operation type '{}': {}", operation_type, e);
+            tracing::error!("{}", err_msg);
+            err_msg
+        })?;
+
+    // Parse parameters
+    let op_params: OperationParams = serde_json::from_value(params.clone())
+        .map_err(|e| {
+            let err_msg = format!("Invalid operation params: {}. Params were: {}", e, serde_json::to_string(&params).unwrap_or_default());
+            tracing::error!("{}", err_msg);
+            err_msg
+        })?;
+
+    // Parse priority
+    let priority = match priority.as_deref() {
+        Some("low") => OperationPriority::Low,
+        Some("high") => OperationPriority::High,
+        Some("urgent") => OperationPriority::Urgent,
+        _ => OperationPriority::Normal,
+    };
+
+    // Create operation
+    let mut operation = QueuedOperation::new(op_type, op_params, priority);
+
+    // Set scheduled time if provided
+    if let Some(scheduled_str) = scheduled_at {
+        let scheduled_dt = chrono::DateTime::parse_from_rfc3339(&scheduled_str)
+            .map_err(|e| format!("Invalid scheduled time: {}", e))?;
+        operation.scheduled_at = Some(scheduled_dt.with_timezone(&chrono::Utc));
+    }
+
+    // Set retry policy
+    if let Some(enabled) = retry_enabled {
+        operation.retry_policy.enabled = enabled;
+    }
+
+    // Set metadata
+    if let Some(desc) = description {
+        operation.description = Some(desc);
+    }
+    if let Some(t) = tags {
+        operation.tags = t;
+    }
+
+    QUEUE_MANAGER.enqueue(operation)
+}
+
+#[tauri::command]
+pub fn queue_get_all_operations() -> Result<Vec<QueuedOperation>, String> {
+    Ok(QUEUE_MANAGER.get_all_operations())
+}
+
+#[tauri::command]
+pub fn queue_get_operation(operation_id: String) -> Result<Option<QueuedOperation>, String> {
+    Ok(QUEUE_MANAGER.get_operation(&operation_id))
+}
+
+#[tauri::command]
+pub fn queue_cancel_operation(operation_id: String) -> Result<(), String> {
+    QUEUE_MANAGER.cancel_operation(&operation_id)
+}
+
+#[tauri::command]
+pub fn queue_retry_operation(operation_id: String) -> Result<(), String> {
+    QUEUE_MANAGER.retry_operation(&operation_id)
+}
+
+#[tauri::command]
+pub fn queue_remove_operation(operation_id: String) -> Result<(), String> {
+    QUEUE_MANAGER.remove_operation(&operation_id)
+}
+
+#[tauri::command]
+pub fn queue_update_config(config: QueueConfig) -> Result<(), String> {
+    QUEUE_MANAGER.update_config(config);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn queue_get_config() -> Result<QueueConfig, String> {
+    Ok(QUEUE_MANAGER.get_config())
+}
+
+#[tauri::command]
+pub fn queue_pause_operation(operation_id: String) -> Result<(), String> {
+    QUEUE_MANAGER.pause_operation(&operation_id)
+}
+
+#[tauri::command]
+pub fn queue_resume_operation(operation_id: String) -> Result<(), String> {
+    QUEUE_MANAGER.resume_operation(&operation_id)
+}
+
+#[tauri::command]
+pub fn queue_run_now(operation_id: String) -> Result<(), String> {
+    QUEUE_MANAGER.run_now(&operation_id)
+}

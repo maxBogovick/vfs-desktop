@@ -19,6 +19,8 @@ import DualPanelContainer from './components/DualPanelContainer.vue';
 import BatchRenameDialog from './components/BatchRenameDialog.vue';
 import BatchAttributeDialog from './components/BatchAttributeDialog.vue';
 import BatchOperationsQueue from './components/BatchOperationsQueue.vue';
+import OperationsQueuePanel from './components/OperationsQueuePanel.vue';
+import QueueSettingsDialog from './components/QueueSettingsDialog.vue';
 import Terminal from './components/Terminal.vue';
 import ProgrammerToolbar from './components/ProgrammerToolbar.vue';
 import PanelToolbar from './components/PanelToolbar.vue';
@@ -47,6 +49,7 @@ import { useContextMenu } from './composables/useContextMenu';
 import { useGrouping } from './composables/useGrouping';
 import { useConflictResolution } from './composables/useConflictResolution';
 import { useBatchOperations } from './composables/useBatchOperations';
+import { useOperationsQueue } from './composables/useOperationsQueue';
 import { useProgrammerMode } from './composables/useProgrammerMode';
 import { useTemplates } from './composables/useTemplates';
 import { useTerminal } from './composables/useTerminal';
@@ -179,8 +182,10 @@ const {
   activePanel,
   leftPanelTabs,
   leftPanelActiveTabId,
+  leftPanelFilesystem,
   rightPanelTabs,
   rightPanelActiveTabId,
+  rightPanelFilesystem,
   togglePanelMode,
   switchActivePanel,
   loadDualPanelState,
@@ -210,6 +215,11 @@ const hasMultipleSelected = computed(() => {
     return selected.size > 1;
   }
   return selectedIds.value.size > 1;
+});
+
+// Computed for queue active operations count
+const queueActiveCount = computed(() => {
+  return queueStatistics.value.running + queueStatistics.value.queued + queueStatistics.value.scheduled;
 });
 
 // Handle sidebar resize - напрямую обновляем ref, watch в App.vue сам сохранит
@@ -312,6 +322,9 @@ const { queueBatchRename, queueBatchAttributeChange, hasOperations } = useBatchO
   await refreshAllPanels([]);
 });
 
+// Operations Queue
+const { addOperation, statistics: queueStatistics, hasActiveOperations } = useOperationsQueue();
+
 // Programmer Mode
 const { isProgrammerMode, toggleProgrammerMode } = useProgrammerMode();
 
@@ -332,6 +345,8 @@ const dashboardWidth = ref(400);
 const showBatchRenameDialog = ref(false);
 const showBatchAttributeDialog = ref(false);
 const showBatchQueue = ref(false);
+const showOperationsQueue = ref(false);
+const showQueueSettings = ref(false);
 const batchOperationFiles = ref<FileItem[]>([]);
 const showTextEditor = ref(false);
 const editorFile = ref<FileItem | null>(null);
@@ -1103,6 +1118,183 @@ const handleSaveFile = async (content: string) => {
   }
 };
 
+// State for queue operation dialog
+const queueOperationPending = ref<{
+  type: 'copy' | 'move' | 'delete' | 'archive' | 'extract';
+  items: FileItem[];
+} | null>(null);
+
+// Add to queue handler
+const handleQueueOperation = async (operationType: 'copy' | 'move' | 'delete' | 'archive' | 'extract') => {
+  const { success, error } = useNotifications();
+
+  try {
+    // Determine FS
+    let sourceFs: string | undefined = undefined;
+    let destinationFs: string | undefined = undefined;
+    if (isDualMode.value) {
+        sourceFs = activePanel.value === 'left' ? leftPanelFilesystem.value : rightPanelFilesystem.value;
+        destinationFs = activePanel.value === 'left' ? leftPanelFilesystem.value : rightPanelFilesystem.value;
+    } else {
+        const config = await invoke<any>('get_config');
+        sourceFs = config.filesystem_backend === 'virtual' ? 'virtual' : 'real';
+    }
+
+    // Get selected items
+    let selectedItems: FileItem[] = [];
+    if (isDualMode.value) {
+      const methods = getActivePanelMethods();
+      if (methods) {
+        selectedItems = methods.getSelectedItems();
+      }
+    } else {
+      selectedItems = getSelected();
+    }
+
+    if (selectedItems.length === 0) {
+      return;
+    }
+
+    // For Copy and Move, we need to ask for destination
+    if (operationType === 'copy' || operationType === 'move') {
+      queueOperationPending.value = { type: operationType, items: selectedItems };
+
+      // Show input dialog to select destination
+      showInput(
+        operationType === 'copy' ? 'Copy to...' : 'Move to...',
+        'Enter destination path:',
+        async (destinationPath: string) => {
+          if (destinationPath) {
+            // Assume destination FS is same as source if entering path manually
+            await executeQueueOperation(operationType, selectedItems, destinationPath, sourceFs, destinationFs);
+          }
+          queueOperationPending.value = null;
+        },
+        '/', // default value
+        '/path/to/destination' // placeholder
+      );
+      return;
+    }
+
+    // For Delete, Extract, Archive - execute directly
+    // Use sourceFs as destFs for Archive/Extract (same dir by default)
+    await executeQueueOperation(operationType, selectedItems, undefined, sourceFs, destinationFs);
+  } catch (err) {
+    error('Failed to add to queue', err instanceof Error ? err.message : String(err));
+    queueOperationPending.value = null;
+  }
+};
+
+// Execute queue operation
+const executeQueueOperation = async (
+  operationType: 'copy' | 'move' | 'delete' | 'archive' | 'extract',
+  items: FileItem[],
+  destination?: string,
+  sourceFs?: string,
+  destFs?: string
+) => {
+  const { success, error } = useNotifications();
+
+  try {
+    for (const item of items) {
+      let params: any;
+      let description = '';
+
+      switch (operationType) {
+        case 'copy':
+          params = {
+            type: 'Copy',
+            sources: [item.path],
+            destination: destination || '',
+            sourceFs: sourceFs,
+            destFs: destFs,
+          };
+          description = `Copy ${item.name} to ${destination}`;
+          break;
+
+        case 'move':
+          params = {
+            type: 'Move',
+            sources: [item.path],
+            destination: destination || '',
+            sourceFs: sourceFs,
+            destFs: destFs,
+          };
+          description = `Move ${item.name} to ${destination}`;
+          break;
+
+        case 'delete':
+          params = {
+            type: 'Delete',
+            paths: [item.path],
+            panelFs: sourceFs,
+            sourceFs: sourceFs,
+          };
+          description = `Delete ${item.name}`;
+          break;
+
+        case 'archive':
+          // Get current directory path
+          let currentDir = '';
+          if (isDualMode.value) {
+            currentDir = '/' + activePanelPath.value.join('/');
+          } else {
+            currentDir = '/' + currentPath.value.join('/');
+          }
+
+          const archiveName = `${item.name}.zip`;
+          const archivePathVal = currentDir.endsWith('/') ? `${currentDir}${archiveName}` : `${currentDir}/${archiveName}`;
+
+          params = {
+            type: 'Archive',
+            sources: [item.path],
+            archivePath: archivePathVal,
+            format: 'zip',
+            sourceFs: sourceFs,
+            destFs: destFs,
+          };
+          description = `Create archive ${archiveName}`;
+          break;
+
+        case 'extract':
+          // Get current directory path
+          let extractDir = '';
+          if (isDualMode.value) {
+            extractDir = '/' + activePanelPath.value.join('/');
+          } else {
+            extractDir = '/' + currentPath.value.join('/');
+          }
+
+          params = {
+            type: 'Extract',
+            archivePath: item.path,
+            destination: extractDir,
+            sourceFs: sourceFs,
+            destFs: destFs,
+          };
+          description = `Extract ${item.name}`;
+          break;
+
+        default:
+          throw new Error(`Unknown operation type: ${operationType}`);
+      }
+
+      await addOperation(operationType, params, {
+        priority: 'normal',
+        description,
+        tags: ['context-menu'],
+      });
+    }
+
+    success('Added to Queue', `${items.length} item(s) added to operations queue`);
+
+    // Open queue panel to show the added operations
+    showOperationsQueue.value = true;
+  } catch (err) {
+    error('Failed to add to queue', err instanceof Error ? err.message : String(err));
+  }
+};
+
 // Context menu handlers (work in both single and dual modes)
 const contextMenuHandlers = {
   open: () => {
@@ -1321,6 +1513,21 @@ const contextMenuHandlers = {
      } else {
         handleSelectAll();
      }
+  },
+  queueCopy: async () => {
+    await handleQueueOperation('copy');
+  },
+  queueMove: async () => {
+    await handleQueueOperation('move');
+  },
+  queueDelete: async () => {
+    await handleQueueOperation('delete');
+  },
+  queueArchive: async () => {
+    await handleQueueOperation('archive');
+  },
+  queueExtract: async () => {
+    await handleQueueOperation('extract');
   },
 };
 
@@ -1573,7 +1780,7 @@ onMounted(async () => {
   if (!isDualMode.value) {
     // Check current filesystem backend configuration
     const config = await invoke<any>('get_config');
-    const isVirtualFS = config.filesystem_backend === 'Virtual';
+    const isVirtualFS = config.filesystem_backend === 'virtual';
 
     if (uiState && uiState.tabs && uiState.tabs.length > 0 && !isVirtualFS) {
       // Only restore tabs for Real FS (tabs contain real paths)
@@ -1606,7 +1813,7 @@ onMounted(async () => {
   } else {
     // Dual mode: check if we need to initialize home for virtual FS
     const config = await invoke<any>('get_config');
-    const isVirtualFS = config.filesystem_backend === 'Virtual';
+    const isVirtualFS = config.filesystem_backend === 'virtual';
     if (isVirtualFS && (!uiState || !uiState.dual_panel_config)) {
       console.log('[App] ℹ️ Virtual FS in dual mode - initializing with home');
       const home = await getHomeDirectory();
@@ -1651,6 +1858,7 @@ onMounted(async () => {
         :is-programmer-mode="isProgrammerMode"
         :group-by="groupBy"
         :group-by-options="groupByOptions"
+        :queue-active-count="queueActiveCount"
         @go-back="handleGoBack"
         @go-forward="handleGoForward"
         @go-up="handleGoUp"
@@ -1666,6 +1874,7 @@ onMounted(async () => {
         @toggle-programmer-mode="toggleProgrammerMode"
         @toggle-panel-mode="togglePanelMode"
         @toggle-dashboard="handleToggleDashboard"
+        @toggle-operations-queue="() => showOperationsQueue = !showOperationsQueue"
         @update:group-by="(value) => groupBy = value"
     />
 
@@ -1831,6 +2040,11 @@ onMounted(async () => {
         @new-folder="contextMenuHandlers.newFolder"
         @new-file="contextMenuHandlers.newFile"
         @select-all="contextMenuHandlers.selectAll"
+        @queue-copy="contextMenuHandlers.queueCopy"
+        @queue-move="contextMenuHandlers.queueMove"
+        @queue-delete="contextMenuHandlers.queueDelete"
+        @queue-archive="contextMenuHandlers.queueArchive"
+        @queue-extract="contextMenuHandlers.queueExtract"
         @close="closeContextMenu"
     />
 
@@ -1912,6 +2126,31 @@ onMounted(async () => {
       </div>
       <BatchOperationsQueue />
     </div>
+
+    <!-- Operations Queue Panel -->
+    <div
+      v-if="showOperationsQueue"
+      class="fixed right-0 top-0 bottom-0 w-[500px] bg-[var(--vf-bg-primary)] border-l border-[var(--vf-border-default)] shadow-2xl z-[1000] flex flex-col"
+    >
+      <div class="flex items-center justify-between p-4 border-b border-[var(--vf-border-default)]">
+        <h3 class="text-lg font-semibold text-[var(--vf-text-primary)]">Operations Queue</h3>
+        <button
+          @click="showOperationsQueue = false"
+          class="text-[var(--vf-text-secondary)] hover:text-[var(--vf-text-primary)] text-xl leading-none"
+        >
+          ×
+        </button>
+      </div>
+      <div class="flex-1 overflow-hidden">
+        <OperationsQueuePanel @open-settings="showQueueSettings = true" />
+      </div>
+    </div>
+
+    <!-- Queue Settings Dialog -->
+    <QueueSettingsDialog
+      :is-open="showQueueSettings"
+      @close="showQueueSettings = false"
+    />
 
     <!-- File Operations Progress -->
     <OperationsProgress />

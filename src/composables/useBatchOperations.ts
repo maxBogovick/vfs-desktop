@@ -399,13 +399,13 @@ export function useBatchOperations(onOperationComplete?: () => Promise<void>) {
   }
 
   /**
-   * Retry failed operation
+   * Retry failed or cancelled operation
    */
   async function retryOperation(operationId: string) {
     const operation = operations.value.get(operationId);
     if (!operation) return;
 
-    if (operation.status === 'failed') {
+    if (operation.status === 'failed' || operation.status === 'cancelled') {
       // Reset operation
       operation.status = 'pending';
       operation.processedCount = 0;

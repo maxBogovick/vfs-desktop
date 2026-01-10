@@ -19,6 +19,7 @@ interface Props {
   panelMode?: PanelMode;
   groupBy?: GroupBy;
   groupByOptions?: ReadonlyArray<{ value: string; label: string; icon: string }>;
+  queueActiveCount?: number;
 }
 
 interface Emits {
@@ -37,6 +38,7 @@ interface Emits {
   (e: 'toggleProgrammerMode'): void;
   (e: 'togglePanelMode'): void;
   (e: 'toggleDashboard'): void;
+  (e: 'toggleOperationsQueue'): void;
   (e: 'update:groupBy', value: GroupBy): void;
 }
 
@@ -294,6 +296,22 @@ onUnmounted(() => {
         title="Folder Statistics Dashboard"
       >
         📊
+      </button>
+
+      <!-- Operations Queue Button -->
+      <button
+        @click="emit('toggleOperationsQueue')"
+        class="w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] flex items-center justify-center transition-all relative"
+        :title="`Operations Queue${queueActiveCount ? ` (${queueActiveCount} active)` : ''}`"
+      >
+        📋
+        <!-- Badge for active operations -->
+        <span
+          v-if="queueActiveCount && queueActiveCount > 0"
+          class="absolute -top-1 -right-1 bg-blue-500 text-white text-[9px] font-bold rounded-full min-w-[14px] h-[14px] flex items-center justify-center px-0.5"
+        >
+          {{ queueActiveCount > 99 ? '99+' : queueActiveCount }}
+        </span>
       </button>
 
       <!-- Programmer Mode Button -->

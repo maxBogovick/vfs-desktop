@@ -10,6 +10,7 @@ mod file_operations;
 #[cfg(feature = "api-server")]
 pub mod file_operations_async;
 pub mod templates;
+pub mod queue;
 
 // Shared application state
 pub mod state;
@@ -44,6 +45,8 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_tracing();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
@@ -123,7 +126,19 @@ pub fn run() {
             vault_get_default_directory,
             vault_select_directory,
             vault_set_custom_directory,
-            vault_reset_to_default_directory
+            vault_reset_to_default_directory,
+            // Queue management commands
+            queue_add_operation,
+            queue_get_all_operations,
+            queue_get_operation,
+            queue_cancel_operation,
+            queue_retry_operation,
+            queue_remove_operation,
+            queue_update_config,
+            queue_get_config,
+            queue_pause_operation,
+            queue_resume_operation,
+            queue_run_now
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
