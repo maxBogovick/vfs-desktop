@@ -1846,7 +1846,7 @@ onMounted(async () => {
   } else {
     // Dual mode: check if we need to initialize home for virtual FS
     const config = await invoke<any>('get_config');
-    const isVirtualFS = config.filesystem_backend === 'Virtual';
+    const isVirtualFS = config.filesystem_backend === 'virtual';
     if (isVirtualFS && (!uiState || !uiState.dual_panel_config)) {
       console.log('[App] ℹ️ Virtual FS in dual mode - initializing with home');
       const currentFs = 'virtual';
