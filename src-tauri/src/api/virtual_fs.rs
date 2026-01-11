@@ -190,9 +190,10 @@ impl VirtualFileSystem {
             vault_enabled: true,
         };
 
-        // Если это первый запуск (нет файла состояния и нет хранилища), сохраним дефолт
-        if !vfs.persistence_path.exists() && !vfs.data_path.exists() {
-             let _ = vfs.save_state();
+        // Гарантируем наличие fs.json на диске при старте
+        if !vfs.persistence_path.exists() {
+            tracing::info!("fs.json not found, creating default at {:?}", vfs.persistence_path);
+            let _ = vfs.save_state();
         }
 
         Ok(vfs)
@@ -280,27 +281,42 @@ impl VirtualFileSystem {
 
         // Check if vault is unlocked
         let vault_guard = self.vault_status.read().unwrap();
-        if let crate::api::security::VfsStatus::Unlocked { ref session, .. } = *vault_guard {
-            // Serialize with Bincode
-            let serialized = bincode::serialize(&*state)
-                .map_err(|e| FileSystemError::new(format!("Bincode serialization failed: {}", e)))?;
-            
-            // Encrypt
-            use crate::api::security::encrypt_blob;
-            let encrypted_blob = encrypt_blob(&serialized, session)
-                .map_err(|e| FileSystemError::new(format!("Encryption failed: {:?}", e)))?;
+        match &*vault_guard {
+            crate::api::security::VfsStatus::Unlocked { session, .. } => {
+                tracing::info!("Saving state to Encrypted Vault (Secure Mode): {:?}", self.data_path);
+                // Serialize with Bincode
+                let serialized = bincode::serialize(&*state)
+                    .map_err(|e| FileSystemError::new(format!("Bincode serialization failed: {}", e)))?;
+                
+                // Encrypt
+                use crate::api::security::encrypt_blob;
+                let encrypted_blob = encrypt_blob(&serialized, session)
+                    .map_err(|e| FileSystemError::new(format!("Encryption failed: {:?}", e)))?;
 
-            // Write to vault.bin
-            use crate::api::security::atomic_write;
-            atomic_write(&self.data_path, &encrypted_blob)
-                .map_err(|e| FileSystemError::new(format!("Failed to write vault data: {:?}", e)))?;
-        } else {
-            // Fallback to JSON if vault is not active (legacy mode)
-            let data = serde_json::to_vec_pretty(&*state)
-                .map_err(|e| FileSystemError::new(format!("Не удалось сериализовать состояние: {}", e)))?;
+                // Write to vault.bin
+                use crate::api::security::atomic_write;
+                atomic_write(&self.data_path, &encrypted_blob)
+                    .map_err(|e| FileSystemError::new(format!("Failed to write vault data: {:?}", e)))?;
+            },
+            status => {
+                // Fallback to JSON if vault is not active (legacy mode)
+                tracing::info!("Saving state to Public fs.json (Status: {:?}): {:?}", status, self.persistence_path);
+                
+                let data = serde_json::to_vec_pretty(&*state)
+                    .map_err(|e| FileSystemError::new(format!("Не удалось сериализовать состояние: {}", e)))?;
 
-            std::fs::write(&self.persistence_path, data)
-                .map_err(|e| FileSystemError::new(format!("Не удалось записать файл состояния: {}", e)))?;
+                // Ensure parent directory exists
+                if let Some(parent) = self.persistence_path.parent() {
+                    if !parent.exists() {
+                        tracing::info!("Creating parent directory: {:?}", parent);
+                        std::fs::create_dir_all(parent)
+                            .map_err(|e| FileSystemError::new(format!("Не удалось создать директорию: {}", e)))?;
+                    }
+                }
+
+                std::fs::write(&self.persistence_path, data)
+                    .map_err(|e| FileSystemError::new(format!("Не удалось записать файл состояния: {}", e)))?;
+            }
         }
 
         Ok(())
@@ -473,6 +489,35 @@ impl VirtualFileSystem {
         use crate::api::security::*;
         use crate::api::vault_error::VaultError;
 
+        // Step 0: Ensure Public/Legacy state is saved to fs.json before we overwrite memory
+        // We do this in a separate scope to drop locks before proceeding
+        {
+            let status_guard = self.vault_status.read().unwrap();
+            if matches!(*status_guard, VfsStatus::Locked) || matches!(*status_guard, VfsStatus::NotInitialized) {
+                tracing::info!("Switching from Public to Secure: Persisting fs.json...");
+                // We can't call self.save_state() here because it might try to take locks we already hold
+                // or we want to be explicit about writing to fs.json regardless of what save_state thinks.
+                if let Ok(state) = self.state.read() {
+                     let data = serde_json::to_vec_pretty(&*state)
+                        .map_err(|e| VaultError::Serialization(format!("Failed to serialize public state: {}", e)))?;
+                    
+                    // Ensure parent directory exists
+                    if let Some(parent) = self.persistence_path.parent() {
+                        if !parent.exists() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                    }
+
+                    if let Err(e) = std::fs::write(&self.persistence_path, data) {
+                        tracing::error!("Failed to save fs.json before unlock: {}", e);
+                        // We continue anyway, as failing to save public state shouldn't block unlocking
+                    } else {
+                        tracing::info!("Successfully saved fs.json before unlock");
+                    }
+                }
+            }
+        }
+
         let mut status_guard = self.vault_status.write()
             .map_err(|_| VaultError::CryptoError("Lock poisoned".into()))?;
 
@@ -545,6 +590,8 @@ impl VirtualFileSystem {
 
             // Save atomically
             atomic_write(&self.data_path, &encrypted_blob)?;
+            
+            tracing::info!("VFS state saved to vault.bin before locking");
         }
 
         // Change status to Locked (this will drop session and trigger Zeroize)
@@ -558,6 +605,9 @@ impl VirtualFileSystem {
         };
 
         *self.state.write().map_err(|_| VaultError::CryptoError("Lock poisoned".into()))? = public_state;
+        
+        // Принудительно сохраняем публичное состояние, чтобы fs.json был актуален
+        let _ = self.save_state();
 
         Ok(())
     }

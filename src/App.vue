@@ -288,8 +288,20 @@ const getCurrentDirectoryPath = async (): Promise<string> => {
 // Функция для обновления текущей директории
 const refreshCurrentDirectory = async () => {
   const pathString = await getCurrentDirectoryPath();
-  await loadDirectory(pathString);
+  // Ensure we use the correct backend when refreshing
+  await loadDirectory(pathString, currentFilesystemBackend.value);
 };
+
+// Watch for vault unlock to refresh files
+watch(() => vault.status.value, async (newStatus) => {
+  if (newStatus === 'UNLOCKED') {
+    console.log('[App] 🔓 Vault unlocked - refreshing view');
+    // Give a small delay for backend state to settle
+    setTimeout(async () => {
+        await handleGlobalRefresh();
+    }, 50);
+  }
+});
 
 // Handle global refresh event
 const handleGlobalRefresh = async () => {
@@ -354,6 +366,7 @@ const batchOperationFiles = ref<FileItem[]>([]);
 const showTextEditor = ref(false);
 const editorFile = ref<FileItem | null>(null);
 const editorFileFs = ref<string | undefined>(undefined);
+const currentFilesystemBackend = ref<string>('real');
 
 // Inline File Creator state
 const showInlineCreator = ref(false);
@@ -1676,8 +1689,8 @@ const handleCompress = async (format: 'zip' | 'tar' | 'tar.gz') => {
 
 // Watch current path and load directory
 watch(currentPath, async () => {
-  const pathString = await fileOps.getCurrentDirectory(currentPath.value);
-  await loadDirectory(pathString);
+  const pathString = await fileOps.getCurrentDirectory(currentPath.value, currentFilesystemBackend.value);
+  await loadDirectory(pathString, currentFilesystemBackend.value);
   clearSelection();
   // Устанавливаем фокус на первый элемент после загрузки
   if (processedFiles.value.length > 0) {
@@ -1685,7 +1698,7 @@ watch(currentPath, async () => {
   } else {
     setFocused(null);
   }
-}, { immediate: true });
+});
 
 // Save tabs and paths - DIRECT SIMPLE VERSION
 // ВАЖНО: deep: true чтобы отслеживать изменения внутри объектов!
@@ -1768,6 +1781,27 @@ const updateSystemStats = async () => {
 onMounted(async () => {
   document.addEventListener('click', closeContextMenu);
   window.addEventListener('vf-refresh-all', handleGlobalRefresh);
+  
+  // Listen for filesystem backend changes from Settings
+  window.addEventListener('fs-config-changed', async () => {
+    try {
+      const config = await invoke<any>('get_config');
+      const isVirtualFS = config.filesystem_backend === 'virtual';
+      console.log('[App] 🔄 FS Config changed. New backend:', isVirtualFS ? 'virtual' : 'real');
+      
+      currentFilesystemBackend.value = isVirtualFS ? 'virtual' : 'real';
+      await vault.checkStatus();
+      
+      // Reset navigation to home of the new backend to ensure valid state
+      const home = await getHomeDirectory(currentFilesystemBackend.value);
+      const pathParts = home.split('/').filter(p => p);
+      navigateTo(pathParts);
+      
+      await handleGlobalRefresh();
+    } catch (e) {
+      console.error('[App] Failed to handle FS config change:', e);
+    }
+  });
 
   // Check vault status FIRST
   await vault.checkStatus();
@@ -1814,6 +1848,10 @@ onMounted(async () => {
     const config = await invoke<any>('get_config');
     const isVirtualFS = config.filesystem_backend === 'virtual';
     console.log("is vfs = ", isVirtualFS)
+    
+    // Update global ref so watcher can use it
+    currentFilesystemBackend.value = isVirtualFS ? 'virtual' : 'real';
+
     // Allow restoration for both Real and Virtual FS
     if (uiState && uiState.tabs && uiState.tabs.length > 0) {
       console.log('[App] ✅ Restoring', uiState.tabs.length, 'tabs');
@@ -1831,18 +1869,29 @@ onMounted(async () => {
         console.log('[App] ✅ Restoring active tab:', uiState.active_tab_id);
         activeTabId.value = uiState.active_tab_id;
       }
-    } else if (uiState && uiState.last_path && uiState.last_path.length > 0 && !isVirtualFS) {
-      // Only restore last path for Real FS (Virtual FS paths won't exist)
+    } else if (uiState && uiState.last_path && uiState.last_path.length > 0) {
+      // Restore last path for both Real and Virtual FS
       console.log('[App] ✅ Restoring last path:', uiState.last_path);
       navigateTo(uiState.last_path);
     } else {
       // No saved state or empty - default behavior
       console.log('[App] ℹ️ No tabs/path to restore - navigating to home');
-      const currentFs = isVirtualFS ? 'virtual' : 'real';
+      const currentFs = currentFilesystemBackend.value;
       const home = await getHomeDirectory(currentFs);
       console.log('[App] 🏠 Home directory:', home);
-      await loadDirectory(home, currentFs);
+      
+      // Navigate to home (this updates currentPath and triggers the watcher to load files)
+      const pathParts = home.split('/').filter(p => p);
+      navigateTo(pathParts);
     }
+
+    // Force initial load to ensure content is visible
+    // This handles cases where watcher might not trigger (e.g. same path) or race conditions
+    setTimeout(async () => {
+        const pathString = await fileOps.getCurrentDirectory(currentPath.value, currentFilesystemBackend.value);
+        console.log('[App] 🚀 Force initial load:', pathString, 'Backend:', currentFilesystemBackend.value);
+        await loadDirectory(pathString, currentFilesystemBackend.value);
+    }, 100);
   } else {
     // Dual mode: check if we need to initialize home for virtual FS
     const config = await invoke<any>('get_config');

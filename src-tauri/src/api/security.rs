@@ -68,7 +68,14 @@ impl VaultSession {
     }
 }
 
+impl std::fmt::Debug for VaultSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "VaultSession(***REDACTED***)")
+    }
+}
+
 /// Global VFS status enum
+#[derive(Debug)]
 pub enum VfsStatus {
     /// Vault not created (first run)
     NotInitialized,
