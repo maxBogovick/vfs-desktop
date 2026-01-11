@@ -1676,44 +1676,14 @@ const handleCompress = async (format: 'zip' | 'tar' | 'tar.gz') => {
 
 // Watch current path and load directory
 watch(currentPath, async () => {
-  try {
-    const pathString = await fileOps.getCurrentDirectory(currentPath.value);
-    // Backend enum serializes to lowercase "virtual"
-    const config = await invoke<any>('get_config');
-    const isVirtualFS = config.filesystem_backend === 'virtual';
-    const currentFs = isVirtualFS ? 'virtual' : 'real';
-
-    await loadDirectory(pathString, currentFs);
-    clearSelection();
-    // Устанавливаем фокус на первый элемент после загрузки
-    if (processedFiles.value.length > 0) {
-      setFocused(processedFiles.value[0].id);
-    } else {
-      setFocused(null);
-    }
-  } catch (error) {
-    // If path doesn't exist (e.g., restored path not in virtual FS), navigate to home
-    console.warn('[App] Failed to load path, navigating to home:', error);
-
-    // Get the correct filesystem backend
-    const config = await invoke<any>('get_config');
-    const isVirtualFS = config.filesystem_backend === 'virtual';
-    const currentFs = isVirtualFS ? 'virtual' : 'real';
-
-    // Get home directory for the correct filesystem
-    const home = await getHomeDirectory(currentFs);
-    const homePath = home.split('/').filter(Boolean);
-
-    // Only navigate if we're not already trying to load home
-    const currentPathStr = currentPath.value.join('/');
-    const homePathStr = homePath.join('/');
-
-    if (currentPathStr !== homePathStr) {
-      navigateTo(homePath);
-    } else {
-      // If we're already at home and it still fails, clear files to avoid infinite loop
-      console.error('[App] Failed to load home directory, clearing files');
-    }
+  const pathString = await fileOps.getCurrentDirectory(currentPath.value);
+  await loadDirectory(pathString);
+  clearSelection();
+  // Устанавливаем фокус на первый элемент после загрузки
+  if (processedFiles.value.length > 0) {
+    setFocused(processedFiles.value[0].id);
+  } else {
+    setFocused(null);
   }
 }, { immediate: true });
 
@@ -1842,38 +1812,19 @@ onMounted(async () => {
   if (!isDualMode.value) {
     // Check current filesystem backend configuration
     const config = await invoke<any>('get_config');
-    // Backend enum serializes to lowercase "virtual"
     const isVirtualFS = config.filesystem_backend === 'virtual';
-
+    console.log("is vfs = ", isVirtualFS)
     // Allow restoration for both Real and Virtual FS
     if (uiState && uiState.tabs && uiState.tabs.length > 0) {
       console.log('[App] ✅ Restoring', uiState.tabs.length, 'tabs');
 
-      // For Virtual FS, validate paths and use home directory if path doesn't exist
-      if (isVirtualFS) {
-        const currentFs = 'virtual';
-        const home = await getHomeDirectory(currentFs);
-        const homePath = home.split('/').filter(Boolean);
-
-        tabs.value = uiState.tabs.map(tabState => ({
-          id: tabState.id,
-          path: homePath, // Use home directory for Virtual FS
-          name: 'Home',
-          history: [homePath],
-          historyIndex: 0,
-        }));
-
-        console.log('[App] ⚠️ Virtual FS: Replaced restored paths with home directory');
-      } else {
-        // Real FS: restore paths as-is
-        tabs.value = uiState.tabs.map(tabState => ({
-          id: tabState.id,
-          path: tabState.path,
-          name: tabState.name,
-          history: [tabState.path],
-          historyIndex: 0,
-        }));
-      }
+      tabs.value = uiState.tabs.map(tabState => ({
+        id: tabState.id,
+        path: tabState.path,
+        name: tabState.name,
+        history: [tabState.path],
+        historyIndex: 0,
+      }));
 
       // Восстановить активный таб
       if (uiState.active_tab_id) {
@@ -1895,7 +1846,7 @@ onMounted(async () => {
   } else {
     // Dual mode: check if we need to initialize home for virtual FS
     const config = await invoke<any>('get_config');
-    const isVirtualFS = config.filesystem_backend === 'virtual';
+    const isVirtualFS = config.filesystem_backend === 'Virtual';
     if (isVirtualFS && (!uiState || !uiState.dual_panel_config)) {
       console.log('[App] ℹ️ Virtual FS in dual mode - initializing with home');
       const currentFs = 'virtual';
