@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue';
+import { computed, watch, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+
+// Components
 import Toolbar from './components/Toolbar.vue';
 import Sidebar from './components/Sidebar.vue';
 import FileList from './components/FileList.vue';
@@ -30,6 +32,7 @@ import WidgetLayer from './components/WidgetLayer.vue';
 import WidgetSelector from './components/WidgetSelector.vue';
 import ShareDialog from './components/ShareDialog.vue';
 
+// Composables - Core
 import { useFileSystem } from './composables/useFileSystem';
 import { useVault } from './composables/useVault';
 import { useNavigation } from './composables/useNavigation';
@@ -41,7 +44,6 @@ import { useDialogs } from './composables/useDialogs';
 import { useFileOperations } from './composables/useFileOperations';
 import { useCommands } from './composables/useCommands';
 import { useNotifications } from './composables/useNotifications';
-import { useFileContentCache } from './composables/useFileContentCache';
 import { useBookmarks } from './composables/useBookmarks';
 import { useUIState } from './composables/useUIState';
 import { useSwipeNavigation } from './composables/useSwipeNavigation';
@@ -59,12 +61,22 @@ import { useFileColoring } from './composables/useFileColoring';
 import { useGlobalRefresh } from './composables/useGlobalRefresh';
 import { useWidgets } from './composables/useWidgets';
 import { useClipboard } from './composables/useClipboard';
-import { createKeyboardShortcuts } from './utils/shortcuts';
 
-import type {FileItem, ViewMode, BatchRenameConfig, BatchAttributeChange} from './types';
+// Composables - New Refactored
+import { useAppUIState } from './composables/useAppUIState';
+import { useEditorState } from './composables/useEditorState';
+import { useContextMenuActions } from './composables/useContextMenuActions';
+
+// Utils
+import { createKeyboardShortcuts } from './utils/shortcuts';
+import type { FileItem, BatchRenameConfig, BatchAttributeChange } from './types';
+
+// ============================================================================
+// CORE COMPOSABLES
+// ============================================================================
 
 // File System
-const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory, writeFileContent, extractArchive, createArchive } = useFileSystem();
+const { files, isLoading, loadDirectory, normalizePath, getHomeDirectory, openTerminal } = useFileSystem();
 
 // Vault Security
 const vault = useVault();
@@ -110,10 +122,7 @@ const {
 } = useSelection();
 
 // Search & Filters
-const {
-  processFiles,
-  hasActiveFilters,
-} = useSearch();
+const { processFiles, hasActiveFilters } = useSearch();
 
 // Drag & Drop
 const {
@@ -151,6 +160,8 @@ const {
 const {
   notifications: activeNotifications,
   clear: clearNotifications,
+  success,
+  error,
 } = useNotifications();
 
 // Bookmarks
@@ -200,80 +211,50 @@ const {
   toggleTerminal,
 } = useTerminal();
 
-// Computed для текущего пути терминала
-const terminalWorkingDir = computed(() => {
-  if (isDualMode.value) {
-    return '/' + activePanelPath.value.join('/');
-  }
-  return '/' + currentPath.value.join('/');
+// Context Menu (global)
+const { contextMenu, showContextMenu, closeContextMenu } = useContextMenu();
+
+// Grouping
+const { groupBy, groupByOptions, groupFiles } = useGrouping();
+
+// Global Refresh
+const { refreshAllPanels } = useGlobalRefresh();
+
+// Widgets
+const { toggleWidget, showWidgetSelector, openWidgetSelector, closeWidgetSelector } = useWidgets();
+
+// Clipboard
+const { hasClipboardItems } = useClipboard();
+
+// Batch Operations
+const { queueBatchRename, queueBatchAttributeChange, hasOperations } = useBatchOperations(async () => {
+  await refreshAllPanels([]);
 });
 
-// Computed для определения множественного выбора
-const hasMultipleSelected = computed(() => {
-  if (isDualMode.value) {
-    const methods = getActivePanelMethods();
-    const selected = methods?.getSelectedIds() || new Set();
-    return selected.size > 1;
-  }
-  return selectedIds.value.size > 1;
-});
+// Operations Queue
+const { statistics: queueStatistics } = useOperationsQueue();
 
-// Computed for queue active operations count
-const queueActiveCount = computed(() => {
-  return queueStatistics.value.running + queueStatistics.value.queued + queueStatistics.value.scheduled;
-});
+// Programmer Mode
+const { isProgrammerMode, toggleProgrammerMode } = useProgrammerMode();
 
-// Handle sidebar resize - напрямую обновляем ref, watch в App.vue сам сохранит
-const handleSidebarResize = (width: number) => {
-  sidebarWidth.value = width;
-};
+// Templates
+const { loadTemplates } = useTemplates();
 
-// Handle preview resize - напрямую обновляем ref, watch в App.vue сам сохранит
-const handlePreviewResize = (width: number) => {
-  previewWidth.value = width;
-};
+// ============================================================================
+// NEW REFACTORED COMPOSABLES
+// ============================================================================
 
-// Handle dashboard resize
-const handleDashboardResize = (width: number) => {
-  dashboardWidth.value = width;
-};
+// UI State Management
+const appUI = useAppUIState();
 
-// Toggle dashboard
-const handleToggleDashboard = () => {
-  showDashboard.value = !showDashboard.value;
-  // Close preview when opening dashboard
-  if (showDashboard.value) {
-    previewFile.value = null;
-  }
-};
+// Editor State
+const editor = useEditorState();
 
-const handleBackgroundDrop = async (event: DragEvent) => {
-  console.log('[App] Background Drop Detected!'); // DEBUG LOG
+// ============================================================================
+// HELPERS
+// ============================================================================
 
-  // Create a target representing the current directory
-  const pathString = await getCurrentDirectoryPath();
-  const targetItem: FileItem = {
-    id: pathString,
-    name: pathString.split('/').pop() || 'root',
-    path: pathString,
-    type: 'folder',
-    size: 0,
-    modified: '',
-    // Add defaults for other required fields
-    tags: [],
-    permissions: { readable: true, writable: true, executable: true }
-  };
-
-  // Use wrappers to route through handleTransfer for conflict resolution
-  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
-    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
-  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
-    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
-
-  await handleDrop(targetItem, event, onMove, onCopy);
-};
-
-// Helper для получения текущей директории
+// Helper: Get current directory path as string
 const getCurrentDirectoryPath = async (): Promise<string> => {
   let pathString = currentPath.value.join('/');
   if (pathString && !pathString.startsWith('/')) {
@@ -285,124 +266,117 @@ const getCurrentDirectoryPath = async (): Promise<string> => {
   return pathString;
 };
 
-// Функция для обновления текущей директории
+// Refresh current directory
 const refreshCurrentDirectory = async () => {
   const pathString = await getCurrentDirectoryPath();
-  // Ensure we use the correct backend when refreshing
-  await loadDirectory(pathString, currentFilesystemBackend.value);
+  await loadDirectory(pathString, appUI.currentFilesystemBackend.value);
 };
 
-// Watch for vault unlock to refresh files
-watch(() => vault.status.value, async (newStatus) => {
-  if (newStatus === 'UNLOCKED') {
-    console.log('[App] 🔓 Vault unlocked - refreshing view');
-    // Give a small delay for backend state to settle
-    setTimeout(async () => {
-        await handleGlobalRefresh();
-    }, 50);
-  }
-});
-
-// Handle global refresh event
-const handleGlobalRefresh = async () => {
-  if (!isDualMode.value) {
-    await refreshCurrentDirectory();
-  }
-};
-
-// File Operations
+// File Operations (with auto-refresh callback)
 const fileOps = useFileOperations(async () => {
   await refreshAllPanels(currentPath.value);
 });
 
-// Context Menu (global)
-const { contextMenu, showContextMenu, closeContextMenu } = useContextMenu();
+// ============================================================================
+// CONTEXT MENU ACTIONS
+// ============================================================================
 
-// Grouping
-const { groupBy, groupByOptions, groupFiles } = useGrouping();
-
-// Global Refresh
-const { refreshAllPanels } = useGlobalRefresh();
-
-// Widgets
-const { toggleWidget, showWidgetSelector, closeWidgetSelector } = useWidgets();
-
-// Clipboard
-const { hasClipboardItems } = useClipboard();
-
-// Batch Operations (with auto-refresh callback)
-const { queueBatchRename, queueBatchAttributeChange, hasOperations } = useBatchOperations(async () => {
-  await refreshAllPanels([]);
+const contextMenuActions = useContextMenuActions({
+  isDualMode: () => isDualMode.value,
+  getActivePanelMethods: () => getActivePanelMethods(),
+  getActivePanelPath: () => activePanelPath.value,
+  getCurrentPath: () => currentPath.value,
+  getSelectedItems: () => getSelectedItems(files.value),
+  clearSelection,
+  refreshCurrentDirectory,
+  openEditor: editor.openEditor,
+  openBatchRename: appUI.openBatchRename,
+  openBatchAttribute: appUI.openBatchAttribute,
+  getActiveFilesystem: () => {
+    if (isDualMode.value) {
+      return activePanel.value === 'left' ? leftPanelFilesystem.value : rightPanelFilesystem.value;
+    }
+    return appUI.currentFilesystemBackend.value;
+  },
 });
 
-// Operations Queue
-const { addOperation, statistics: queueStatistics, hasActiveOperations } = useOperationsQueue();
+// Handle share action separately (needs UI state)
+const handleShareAction = async () => {
+  const result = await contextMenuActions.share();
+  if (result) {
+    appUI.shareInfo.value = result;
+    appUI.showShareDialog.value = true;
+  }
+};
 
-// Programmer Mode
-const { isProgrammerMode, toggleProgrammerMode } = useProgrammerMode();
+// Context menu handlers object for template
+const contextMenuHandlers = {
+  ...contextMenuActions,
+  share: handleShareAction,
+  // Override newFile and selectAll with UI-aware versions
+  newFile: () => {
+    if (isDualMode.value) {
+      getActivePanelMethods()?.handleNewFile();
+    } else {
+      appUI.openInlineCreator('file');
+    }
+  },
+  selectAll: () => {
+    if (isDualMode.value) {
+      getActivePanelMethods()?.selectAll();
+    } else {
+      files.value.forEach(file => selectedIds.value.add(file.id));
+    }
+  },
+};
 
-// Templates
-const { loadTemplates } = useTemplates();
+// ============================================================================
+// COMPUTED VALUES
+// ============================================================================
 
-// Local state
-const viewMode = ref<ViewMode>('list');
-const sortBy = ref<'name' | 'size' | 'modified' | 'type'>('name');
-const sortOrder = ref<'asc' | 'desc'>('asc');
-const showHidden = ref(false);
-const isCommandPaletteOpen = ref(false);
-const previewFile = ref<FileItem | null>(null);
-const showSettings = ref(false);
-const settingsInitialTab = ref<'general' | 'colors'>('general');
-const showDashboard = ref(false);
-const dashboardWidth = ref(400);
-const showBatchRenameDialog = ref(false);
-const showBatchAttributeDialog = ref(false);
-const showBatchQueue = ref(false);
-const showOperationsQueue = ref(false);
-const showQueueSettings = ref(false);
-const showShareDialog = ref(false);
-const shareInfo = ref<{ url: string; qr_svg: string; filename: string } | null>(null);
-const batchOperationFiles = ref<FileItem[]>([]);
-const showTextEditor = ref(false);
-const editorFile = ref<FileItem | null>(null);
-const editorFileFs = ref<string | undefined>(undefined);
-const currentFilesystemBackend = ref<string>('real');
+const terminalWorkingDir = computed(() => {
+  if (isDualMode.value) {
+    return '/' + activePanelPath.value.join('/');
+  }
+  return '/' + currentPath.value.join('/');
+});
 
-// Inline File Creator state
-const showInlineCreator = ref(false);
-const inlineCreatorMode = ref<'file' | 'folder'>('file');
+const hasMultipleSelected = computed(() => {
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    const selected = methods?.getSelectedIds() || new Set();
+    return selected.size > 1;
+  }
+  return selectedIds.value.size > 1;
+});
 
-// System stats
-const systemStats = ref({ memory_mb: 0, cpu_percent: 0 });
+const queueActiveCount = computed(() => {
+  return queueStatistics.value.running + queueStatistics.value.queued + queueStatistics.value.scheduled;
+});
 
-// Check if current path is bookmarked
 const isCurrentPathBookmarked = computed(() => {
   const path = '/' + currentPath.value.join('/');
   return isBookmarked(path);
 });
 
-// Computed: Process, filter and sort files
+// Process, filter and sort files
 const processedFiles = computed(() => {
   let result = processFiles(files.value);
 
-  // Filter hidden files if needed (only in single mode)
-  if (!isDualMode.value && !showHidden.value) {
+  if (!isDualMode.value && !appUI.showHidden.value) {
     result = result.filter(file => !file.name.startsWith('.'));
   }
 
-  // Sort files (only in single mode, dual mode handles its own sorting)
   if (!isDualMode.value) {
     result = [...result].sort((a, b) => {
-      // Folders first
       const aIsFolder = a.type === 'folder' || a.type === 'drive' || a.type === 'system';
       const bIsFolder = b.type === 'folder' || b.type === 'drive' || b.type === 'system';
 
       if (aIsFolder && !bIsFolder) return -1;
       if (!aIsFolder && bIsFolder) return 1;
 
-      // Then sort by selected field
       let comparison = 0;
-      switch (sortBy.value) {
+      switch (appUI.sortBy.value) {
         case 'name':
           comparison = a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
           break;
@@ -417,190 +391,39 @@ const processedFiles = computed(() => {
           break;
       }
 
-      return sortOrder.value === 'asc' ? comparison : -comparison;
+      return appUI.sortOrder.value === 'asc' ? comparison : -comparison;
     });
   }
 
   return result;
 });
 
-// File groups
 const fileGroups = computed(() => groupFiles(processedFiles.value));
 
-// Helper to get selected items
-const getSelected = () => getSelectedItems(files.value);
-
-// Handlers
-const handleItemDoubleClick = (item: FileItem) => {
-  if (item.type === 'folder' || item.type === 'drive' || item.type === 'system' || item.type === 'archive') {
-    const pathParts = item.path.split('/').filter(p => p);
-    navigateTo(pathParts);
-  } else {
-    // Check if edit mode is enabled and file is text/code
-    const isEditableFile = item.type === 'file' || item.type === 'code';
-    if (editModeEnabled.value && isEditableFile) {
-      handleEditFile(item);
-    } else {
-      handlePreviewFile(item);
-    }
-  }
-};
-
-const handleContextMenu = (item: FileItem, event: MouseEvent) => {
-  showContextMenu(item, event);
-};
-
-// ИСПРАВЛЕНИЕ: Обновленная функция handleDragStart
-const handleDragStart = (item: FileItem, event: DragEvent) => {
-  // Определяем, какие элементы нужно перетаскивать
-  const items = hasSelection.value && isSelected(item.id)
-      ? getSelectedItems(files.value)
-      : [item];
-
-  console.log('[App] Starting drag with items:', items.length, items.map(i => i.name));
-
-  // Запускаем drag через composable
-  startDrag(items, event);
-};
-
-// ИСПРАВЛЕНИЕ: Обновленная функция handleItemDrop
-const handleItemDrop = async (item: FileItem, event: DragEvent) => {
-  event.preventDefault();
-  console.log('[App] Drop on item:', item.name);
-
-  // Use wrappers to route through handleTransfer for conflict resolution
-  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
-    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
-  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
-    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
-
-  // Используем handleDrop из composable
-  await handleDrop(item, event, onMove, onCopy);
-
-  // Обновляем директорию после drop
-  await refreshCurrentDirectory();
-};
-
-// ИСПРАВЛЕНИЕ: Обновленная функция handleSidebarDrop
-const handleSidebarDrop = async (targetPath: string, event: DragEvent) => {
-  event.preventDefault();
-  console.log('[App] Drop on sidebar path:', targetPath);
-
-  // Создаем временный FileItem для целевого пути
-  const targetItem: FileItem = {
-    id: targetPath,
-    name: targetPath.split('/').pop() || '',
-    path: targetPath,
-    type: 'folder',
-    size: 0,
-    modified: '',
-  };
-
-  // Use wrappers to route through handleTransfer for conflict resolution
-  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
-    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
-  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
-    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
-
-  // Используем handleDrop из composable
-  await handleDrop(targetItem, event, onMove, onCopy);
-
-  // Обновляем директорию после drop
-  await refreshCurrentDirectory();
-};
-
-
-
-// Toggle bookmark for current directory
-const handleToggleBookmark = async () => {
-  const { success, error } = useNotifications();
-  const path = await getCurrentDirectoryPath();
-
-  if (isBookmarked(path)) {
-    // Remove bookmark
-    const bookmark = bookmarks.value.find(b => b.path === path);
-    if (bookmark) {
-      const removed = await removeBookmark(bookmark.id);
-      if (removed) {
-        success('Removed from Favorites', `Removed: ${bookmark.name}`);
-      } else {
-        error('Failed to remove bookmark');
-      }
-    }
-  } else {
-    // Add bookmark
-    const folderName = currentPath.value[currentPath.value.length - 1] || 'Root';
-    const bookmark = await addBookmark(path, folderName);
-    if (bookmark) {
-      success('Added to Favorites', `Added: ${bookmark.name}`);
-    } else {
-      error('Failed to add bookmark', 'This folder may already be bookmarked');
-    }
-  }
-};
-
-// Add folder to bookmarks (from context menu)
-const handleAddFolderToBookmarks = async (item: FileItem) => {
-  const { success, error } = useNotifications();
-
-  if (item.type !== 'folder') {
-    error('Cannot bookmark', 'Only folders can be added to favorites');
-    return;
-  }
-
-  const bookmark = await addBookmark(item.path, item.name);
-  if (bookmark) {
-    success('Added to Favorites', `Added: ${bookmark.name}`);
-  } else {
-    error('Failed to add bookmark', 'This folder may already be bookmarked');
-  }
-};
-
-const handleOpenTerminal = async (item: FileItem) => {
-  const { openTerminal } = useFileSystem();
-  const { success, error } = useNotifications();
-
-  try {
-    await openTerminal(item.path);
-    success('Terminal opened', `Opened terminal in ${item.name}`);
-  } catch (err) {
-    error('Failed to open terminal', err instanceof Error ? err.message : 'Unknown error');
-  }
-};
-
-// Inline File Creator handlers
-const handleCreateFile = async (payload: { name: string; isFolder: boolean; templateId?: string }) => {
-  try {
-    if (payload.isFolder) {
-      await fileOps.handleNewFile(currentPath.value, payload.name);
-    } else {
-      await fileOps.handleNewFile(currentPath.value, payload.name, payload.templateId);
-    }
-    showInlineCreator.value = false;
-  } catch (err) {
-    console.error('Failed to create file:', err);
-  }
-};
-
-const handleBatchCreateFiles = async (names: string[]) => {
-  try {
-    const files = names.map(name => ({ name }));
-    await fileOps.handleBatchCreate(currentPath.value, files);
-    showInlineCreator.value = false;
-  } catch (err) {
-    console.error('Failed to batch create files:', err);
-  }
-};
-
-const handleCancelInlineCreator = () => {
-  showInlineCreator.value = false;
-};
-
-// Navigation handlers for toolbar (work in both single and dual modes)
-const handleGoBack = () => {
+const canGoBackComputed = computed(() => {
   if (isDualMode.value) {
     const methods = getActivePanelMethods();
-    if (methods) methods.goBack();
+    return methods ? methods.canGoBack() : false;
+  }
+  return canGoBack.value;
+});
+
+const canGoForwardComputed = computed(() => {
+  if (isDualMode.value) {
+    const methods = getActivePanelMethods();
+    return methods ? methods.canGoForward() : false;
+  }
+  return canGoForward.value;
+});
+
+// ============================================================================
+// EVENT HANDLERS
+// ============================================================================
+
+// Navigation Handlers
+const handleGoBack = () => {
+  if (isDualMode.value) {
+    getActivePanelMethods()?.goBack();
   } else {
     goBack();
   }
@@ -608,8 +431,7 @@ const handleGoBack = () => {
 
 const handleGoForward = () => {
   if (isDualMode.value) {
-    const methods = getActivePanelMethods();
-    if (methods) methods.goForward();
+    getActivePanelMethods()?.goForward();
   } else {
     goForward();
   }
@@ -617,25 +439,14 @@ const handleGoForward = () => {
 
 const handleGoUp = () => {
   if (isDualMode.value) {
-    const methods = getActivePanelMethods();
-    if (methods) methods.goUp();
+    getActivePanelMethods()?.goUp();
   } else {
     goUp();
   }
 };
 
-const handleAddTab = () => {
-  if (isDualMode.value) {
-    const methods = getActivePanelMethods();
-    if (methods) methods.addTab();
-  } else {
-    addTab();
-  }
-};
-
 const handleGoHome = async () => {
   if (isDualMode.value) {
-    // In dual mode, navigate active panel to home
     const homeDir = await getHomeDirectory();
     const pathParts = homeDir.replace(/^\//, '').split('/').filter(p => p);
 
@@ -677,74 +488,115 @@ const handleGoHome = async () => {
   }
 };
 
-const canGoBackComputed = computed(() => {
+const handleAddTab = () => {
   if (isDualMode.value) {
-    const methods = getActivePanelMethods();
-    return methods ? methods.canGoBack() : false;
+    getActivePanelMethods()?.addTab();
+  } else {
+    addTab();
   }
-  return canGoBack.value;
-});
+};
 
-const canGoForwardComputed = computed(() => {
-  if (isDualMode.value) {
-    const methods = getActivePanelMethods();
-    return methods ? methods.canGoForward() : false;
-  }
-  return canGoForward.value;
-});
-
-// Handle navigation to path from address bar
 const handleNavigateToPath = async (path: string) => {
   try {
-    // Normalize the path (expand ~, resolve to absolute path)
     const normalizedPath = await normalizePath(path);
-
-    // Convert absolute path to array format for navigation
-    // Remove leading slash and split by '/'
     const pathArray = normalizedPath.replace(/^\//, '').split('/').filter(p => p);
-
     navigateTo(pathArray);
   } catch (err) {
-    const { error } = useNotifications();
     error('Invalid path', err instanceof Error ? err.message : 'Path not found');
   }
 };
 
-// Command palette commands
-const commands = useCommands({
-  onNewFolder: () => fileOps.handleNewFolder(currentPath.value, showInput),
-  onNewFile: () => {},
-  onSearch: () => {},
-  onGoto: () => {
-    showInput(
-        'Go To',
-        'Enter path:',
-        (path: string) => {
-          if (path) {
-            try {
-              navigateTo(path.split('/').filter(p => p));
-            } catch (err) {
-              console.error(err);
-            }
-          }
-          closeInput();
-        },
-        '',
-        '/Users/username/Documents'
-    );
-  },
-  onRefresh: () => fileOps.handleRefresh(currentPath.value),
-  onCopyPath: (selectedItems: FileItem[]) => commands.copyPathCommand(selectedItems),
-  onSelectAll: (allFiles: FileItem[]) => commands.selectAllCommand(allFiles, selectAll),
-  onNewTab: addTab,
-  onCloseTab: () => commands.closeTabCommand(tabs.value.length, closeTab, activeTabId.value ?? 0),
-  onSettings: () => { settingsInitialTab.value = 'general'; showSettings.value = true; },
-});
+// Item Handlers
+const handleItemDoubleClick = (item: FileItem) => {
+  if (item.type === 'folder' || item.type === 'drive' || item.type === 'system' || item.type === 'archive') {
+    const pathParts = item.path.split('/').filter(p => p);
+    navigateTo(pathParts);
+  } else {
+    const isEditableFile = item.type === 'file' || item.type === 'code';
+    if (editModeEnabled.value && isEditableFile) {
+      editor.openEditor(item);
+    } else {
+      appUI.openPreview(item);
+    }
+  }
+};
 
-// Toolbar handlers (for single panel mode)
+const handleContextMenu = (item: FileItem, event: MouseEvent) => {
+  showContextMenu(item, event);
+};
+
+// Drag & Drop Handlers
+const handleDragStart = (item: FileItem, event: DragEvent) => {
+  const items = hasSelection.value && isSelected(item.id)
+    ? getSelectedItems(files.value)
+    : [item];
+
+  console.log('[App] Starting drag with items:', items.length, items.map(i => i.name));
+  startDrag(items, event);
+};
+
+const handleItemDrop = async (item: FileItem, event: DragEvent) => {
+  event.preventDefault();
+  console.log('[App] Drop on item:', item.name);
+
+  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
+  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
+
+  await handleDrop(item, event, onMove, onCopy);
+  await refreshCurrentDirectory();
+};
+
+const handleSidebarDrop = async (targetPath: string, event: DragEvent) => {
+  event.preventDefault();
+  console.log('[App] Drop on sidebar path:', targetPath);
+
+  const targetItem: FileItem = {
+    id: targetPath,
+    name: targetPath.split('/').pop() || '',
+    path: targetPath,
+    type: 'folder',
+    size: 0,
+    modified: '',
+  };
+
+  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
+  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
+
+  await handleDrop(targetItem, event, onMove, onCopy);
+  await refreshCurrentDirectory();
+};
+
+const handleBackgroundDrop = async (event: DragEvent) => {
+  console.log('[App] Background Drop Detected!');
+
+  const pathString = await getCurrentDirectoryPath();
+  const targetItem: FileItem = {
+    id: pathString,
+    name: pathString.split('/').pop() || 'root',
+    path: pathString,
+    type: 'folder',
+    size: 0,
+    modified: '',
+    tags: [],
+    permissions: { readable: true, writable: true, executable: true }
+  };
+
+  const onMove = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'move', srcFs, destFs);
+  const onCopy = (src: string[], dest: string, srcFs?: string, destFs?: string) =>
+    fileOps.handleTransfer(src, dest, 'copy', srcFs, destFs);
+
+  await handleDrop(targetItem, event, onMove, onCopy);
+};
+
+// Toolbar Handlers
 const handleSort = (field: 'name' | 'size' | 'modified' | 'type', order: 'asc' | 'desc') => {
-  sortBy.value = field;
-  sortOrder.value = order;
+  appUI.sortBy.value = field;
+  appUI.sortOrder.value = order;
 };
 
 const handleSelectAll = () => {
@@ -766,16 +618,143 @@ const handleRefresh = async () => {
 };
 
 const handleToggleHidden = () => {
-  showHidden.value = !showHidden.value;
+  appUI.showHidden.value = !appUI.showHidden.value;
 };
 
 const handleToggleEditMode = () => {
   editModeEnabled.value = !editModeEnabled.value;
 };
 
+// Bookmark Handlers
+const handleToggleBookmark = async () => {
+  const path = await getCurrentDirectoryPath();
+
+  if (isBookmarked(path)) {
+    const bookmark = bookmarks.value.find(b => b.path === path);
+    if (bookmark) {
+      const removed = await removeBookmark(bookmark.id);
+      if (removed) {
+        success('Removed from Favorites', `Removed: ${bookmark.name}`);
+      } else {
+        error('Failed to remove bookmark');
+      }
+    }
+  } else {
+    const folderName = currentPath.value[currentPath.value.length - 1] || 'Root';
+    const bookmark = await addBookmark(path, folderName);
+    if (bookmark) {
+      success('Added to Favorites', `Added: ${bookmark.name}`);
+    } else {
+      error('Failed to add bookmark', 'This folder may already be bookmarked');
+    }
+  }
+};
+
+// Inline File Creator Handlers
+const handleCreateFile = async (payload: { name: string; isFolder: boolean; templateId?: string }) => {
+  try {
+    if (payload.isFolder) {
+      await fileOps.handleNewFile(currentPath.value, payload.name);
+    } else {
+      await fileOps.handleNewFile(currentPath.value, payload.name, payload.templateId);
+    }
+    appUI.closeInlineCreator();
+  } catch (err) {
+    console.error('Failed to create file:', err);
+  }
+};
+
+const handleBatchCreateFiles = async (names: string[]) => {
+  try {
+    const files = names.map(name => ({ name }));
+    await fileOps.handleBatchCreate(currentPath.value, files);
+    appUI.closeInlineCreator();
+  } catch (err) {
+    console.error('Failed to batch create files:', err);
+  }
+};
+
+// Batch Operations Handlers
+const handleBatchRenameConfirm = async (config: BatchRenameConfig) => {
+  try {
+    await queueBatchRename(appUI.batchOperationFiles.value, config);
+    appUI.closeBatchDialogs();
+    appUI.showBatchQueue.value = true;
+    clearSelection();
+  } catch (err) {
+    console.error('Batch rename failed:', err);
+  }
+};
+
+const handleBatchAttributeConfirm = async (changes: BatchAttributeChange) => {
+  try {
+    await queueBatchAttributeChange(appUI.batchOperationFiles.value, changes);
+    appUI.closeBatchDialogs();
+    appUI.showBatchQueue.value = true;
+    clearSelection();
+  } catch (err) {
+    console.error('Batch attribute change failed:', err);
+  }
+};
+
+// Resize Handlers
+const handleSidebarResize = (width: number) => {
+  sidebarWidth.value = width;
+};
+
+const handlePreviewResize = (width: number) => {
+  previewWidth.value = width;
+};
+
+const handleDashboardResize = (width: number) => {
+  appUI.dashboardWidth.value = width;
+};
+
+// Global Refresh Handler
+const handleGlobalRefresh = async () => {
+  if (!isDualMode.value) {
+    await refreshCurrentDirectory();
+  }
+};
+
+// ============================================================================
+// KEYBOARD SHORTCUTS & COMMANDS
+// ============================================================================
+
+// Command palette commands
+const commands = useCommands({
+  onNewFolder: () => fileOps.handleNewFolder(currentPath.value, showInput),
+  onNewFile: () => {},
+  onSearch: () => {},
+  onGoto: () => {
+    showInput(
+      'Go To',
+      'Enter path:',
+      (path: string) => {
+        if (path) {
+          try {
+            navigateTo(path.split('/').filter(p => p));
+          } catch (err) {
+            console.error(err);
+          }
+        }
+        closeInput();
+      },
+      '',
+      '/Users/username/Documents'
+    );
+  },
+  onRefresh: () => fileOps.handleRefresh(currentPath.value),
+  onCopyPath: (selectedItems: FileItem[]) => commands.copyPathCommand(selectedItems),
+  onSelectAll: (allFiles: FileItem[]) => commands.selectAllCommand(allFiles, selectAll),
+  onNewTab: addTab,
+  onCloseTab: () => commands.closeTabCommand(tabs.value.length, closeTab, activeTabId.value ?? 0),
+  onSettings: () => appUI.openSettings('general'),
+});
+
 const executeCommand = (cmd: { id: string }) => {
   if (cmd.id === 'copy-path') {
-    commands.copyPathCommand(getSelected());
+    commands.copyPathCommand(getSelectedItems(files.value));
   } else if (cmd.id === 'select-all') {
     commands.selectAllCommand(files.value, selectAll);
   } else {
@@ -783,304 +762,246 @@ const executeCommand = (cmd: { id: string }) => {
   }
 };
 
-// Keyboard shortcuts (work in both single and dual modes)
+// Keyboard shortcuts
 const shortcuts = createKeyboardShortcuts(
-    {
-      openCommandPalette: () => { isCommandPaletteOpen.value = true; },
-      closeDialogs: () => {
-        // 1. Context Menu
-        if (contextMenu.value) {
-          closeContextMenu();
-          return;
-        }
-
-        // 2. Critical Modals
-        if (confirmDialog.value.isOpen) {
-          closeConfirm();
-          return;
-        }
-        if (inputDialog.value.isOpen) {
-          closeInput();
-          return;
-        }
-        if (isConflictDialogOpen.value) {
-          handleConflictCancel();
-          return;
-        }
-
-        // 3. Feature Dialogs
-        if (isCommandPaletteOpen.value) {
-          isCommandPaletteOpen.value = false;
-          return;
-        }
-        if (propertiesDialog.value.isOpen) {
-          closeProperties();
-          return;
-        }
-        if (showBatchRenameDialog.value) {
-          showBatchRenameDialog.value = false;
-          return;
-        }
-        if (showBatchAttributeDialog.value) {
-          showBatchAttributeDialog.value = false;
-          return;
-        }
-        if (showInlineCreator.value) {
-          showInlineCreator.value = false;
-          return;
-        }
-
-        // 4. Overlays
-        if (showSettings.value) {
-          showSettings.value = false;
-          return;
-        }
-        if (showDashboard.value) {
-          showDashboard.value = false;
-          return;
-        }
-        if (showBatchQueue.value) {
-          showBatchQueue.value = false;
-          return;
-        }
-        if (previewFile.value) {
-          previewFile.value = null;
-          return;
-        }
-        if (showTextEditor.value) {
-          handleCloseEditor();
-          return;
-        }
-
-        // Widget Selector
-        if (showWidgetSelector.value) {
-          showWidgetSelector.value = false;
-          return;
-        }/*
-
-        // Active Widgets
-        // Close all active widgets
-        const activeWidgets = widgets.value.filter(w => w.active);
-        if (activeWidgets.length > 0) {
-          activeWidgets.forEach(w => toggleWidget(w.id));
-          return;
-        }*/
-
-        // 5. Notifications
-        if (activeNotifications.value.length > 0) {
-          clearNotifications();
-          return;
-        }
-
-        // 6. Selection
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.clearSelection();
-        } else {
-          clearSelection();
-        }
-      },
-      selectAll: (files: FileItem[]) => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.selectAll();
-        } else {
-          selectAll(files);
-        }
-      },
-      addTab: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.addTab();
-        } else {
-          addTab();
-        }
-      },
-      closeTab: (canClose: boolean) => {
-        if (canClose) {
-          if (isDualMode.value) {
-            const methods = getActivePanelMethods();
-            if (methods) methods.closeTab();
-          } else if (tabs.value.length > 1) {
-            closeTab(activeTabId.value);
-          }
-        }
-      },
-      goUp: (canGoUpValue: boolean) => {
-        if (canGoUpValue) {
-          if (isDualMode.value) {
-            const methods = getActivePanelMethods();
-            if (methods) methods.goUp();
-          } else {
-            goUp();
-          }
-        }
-      },
-      handleCopy: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.handleCopy();
-        } else {
-          fileOps.handleCopy(getSelected());
-        }
-      },
-      handleCut: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.handleCut();
-        } else {
-          fileOps.handleCut(getSelected());
-        }
-      },
-      handlePaste: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.handlePaste();
-        } else {
-          fileOps.handlePaste(currentPath.value);
-        }
-      },
-      handleDelete: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.handleDelete();
-        } else {
-          fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm);
-        }
-      },
-      handleRename: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.handleRename();
-        } else {
-          fileOps.handleRename(getSelected(), currentPath.value, showInput);
-        }
-      },
-      handleRefresh: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.handleRefresh();
-        } else {
-          fileOps.handleRefresh(currentPath.value);
-        }
-      },
-      handleNewFolder: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.handleNewFolder();
-        } else {
-          fileOps.handleNewFolder(currentPath.value, showInput);
-        }
-      },
-      handleNewFile: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.handleNewFile();
-        } else {
-          inlineCreatorMode.value = 'file';
-          showInlineCreator.value = true;
-        }
-      },
-      toggleProgrammerMode: () => {
-        toggleProgrammerMode();
-      },
-      toggleBookmark: handleToggleBookmark,
-      openSettings: () => { settingsInitialTab.value = 'general'; showSettings.value = true; },
-      // Dual panel switch (Tab)
-      switchPanels: isDualMode.value ? () => {
-        switchActivePanel(activePanel.value === 'left' ? 'right' : 'left');
-      } : undefined,
-      // Terminal toggle (Ctrl+`)
-      toggleTerminal: () => toggleTerminal(),
-      // Keyboard navigation
-      moveFocusUp: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.moveFocusUp();
-        } else {
-          moveFocusUp(processedFiles.value);
-        }
-      },
-      moveFocusDown: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.moveFocusDown();
-        } else {
-          moveFocusDown(processedFiles.value);
-        }
-      },
-      moveFocusToFirst: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.moveFocusToFirst();
-        } else {
-          moveFocusToFirst(processedFiles.value);
-        }
-      },
-      moveFocusToLast: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.moveFocusToLast();
-        } else {
-          moveFocusToLast(processedFiles.value);
-        }
-      },
-      selectFocused: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.selectFocused();
-        } else {
-          selectFocused();
-        }
-      },
-      toggleFocusedSelection: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.toggleFocusedSelection();
-        } else {
-          toggleFocusedSelection();
-        }
-      },
-      openFocusedItem: () => {
-        if (isDualMode.value) {
-          const methods = getActivePanelMethods();
-          if (methods) methods.openFocusedItem();
-        } else {
-          const item = getFocusedItem(processedFiles.value);
-          if (item) {
-            handleItemDoubleClick(item);
-          }
-        }
-      },
+  {
+    openCommandPalette: appUI.openCommandPalette,
+    closeDialogs: () => {
+      if (contextMenu.value) {
+        closeContextMenu();
+        return;
+      }
+      if (confirmDialog.value.isOpen) {
+        closeConfirm();
+        return;
+      }
+      if (inputDialog.value.isOpen) {
+        closeInput();
+        return;
+      }
+      if (isConflictDialogOpen.value) {
+        handleConflictCancel();
+        return;
+      }
+      if (appUI.isCommandPaletteOpen.value) {
+        appUI.closeCommandPalette();
+        return;
+      }
+      if (propertiesDialog.value.isOpen) {
+        closeProperties();
+        return;
+      }
+      if (appUI.showBatchRenameDialog.value || appUI.showBatchAttributeDialog.value) {
+        appUI.closeBatchDialogs();
+        return;
+      }
+      if (appUI.showInlineCreator.value) {
+        appUI.closeInlineCreator();
+        return;
+      }
+      if (appUI.showSettings.value) {
+        appUI.closeSettings();
+        return;
+      }
+      if (appUI.showDashboard.value) {
+        appUI.showDashboard.value = false;
+        return;
+      }
+      if (appUI.showBatchQueue.value) {
+        appUI.showBatchQueue.value = false;
+        return;
+      }
+      if (appUI.previewFile.value) {
+        appUI.closePreview();
+        return;
+      }
+      if (editor.showTextEditor.value) {
+        editor.closeEditor();
+        return;
+      }
+      if (showWidgetSelector.value) {
+        closeWidgetSelector();
+        return;
+      }
+      if (activeNotifications.value.length > 0) {
+        clearNotifications();
+        return;
+      }
+      if (isDualMode.value) {
+        getActivePanelMethods()?.clearSelection();
+      } else {
+        clearSelection();
+      }
     },
-    () => isDualMode.value ? (getActivePanelMethods()?.getFiles() || []) : files.value
+    selectAll: (files: FileItem[]) => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.selectAll();
+      } else {
+        selectAll(files);
+      }
+    },
+    addTab: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.addTab();
+      } else {
+        addTab();
+      }
+    },
+    closeTab: (canClose: boolean) => {
+      if (canClose) {
+        if (isDualMode.value) {
+          getActivePanelMethods()?.closeTab();
+        } else if (tabs.value.length > 1) {
+          closeTab(activeTabId.value);
+        }
+      }
+    },
+    goUp: (canGoUpValue: boolean) => {
+      if (canGoUpValue) {
+        handleGoUp();
+      }
+    },
+    handleCopy: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.handleCopy();
+      } else {
+        fileOps.handleCopy(getSelectedItems(files.value));
+      }
+    },
+    handleCut: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.handleCut();
+      } else {
+        fileOps.handleCut(getSelectedItems(files.value));
+      }
+    },
+    handlePaste: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.handlePaste();
+      } else {
+        fileOps.handlePaste(currentPath.value);
+      }
+    },
+    handleDelete: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.handleDelete();
+      } else {
+        fileOps.handleDelete(getSelectedItems(files.value), currentPath.value, clearSelection, showConfirm);
+      }
+    },
+    handleRename: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.handleRename();
+      } else {
+        fileOps.handleRename(getSelectedItems(files.value), currentPath.value, showInput);
+      }
+    },
+    handleRefresh: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.handleRefresh();
+      } else {
+        fileOps.handleRefresh(currentPath.value);
+      }
+    },
+    handleNewFolder: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.handleNewFolder();
+      } else {
+        fileOps.handleNewFolder(currentPath.value, showInput);
+      }
+    },
+    handleNewFile: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.handleNewFile();
+      } else {
+        appUI.openInlineCreator('file');
+      }
+    },
+    toggleProgrammerMode: () => {
+      toggleProgrammerMode();
+    },
+    toggleBookmark: handleToggleBookmark,
+    openSettings: () => appUI.openSettings('general'),
+    switchPanels: isDualMode.value ? () => {
+      switchActivePanel(activePanel.value === 'left' ? 'right' : 'left');
+    } : undefined,
+    toggleTerminal: () => toggleTerminal(),
+    moveFocusUp: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.moveFocusUp();
+      } else {
+        moveFocusUp(processedFiles.value);
+      }
+    },
+    moveFocusDown: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.moveFocusDown();
+      } else {
+        moveFocusDown(processedFiles.value);
+      }
+    },
+    moveFocusToFirst: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.moveFocusToFirst();
+      } else {
+        moveFocusToFirst(processedFiles.value);
+      }
+    },
+    moveFocusToLast: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.moveFocusToLast();
+      } else {
+        moveFocusToLast(processedFiles.value);
+      }
+    },
+    selectFocused: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.selectFocused();
+      } else {
+        selectFocused();
+      }
+    },
+    toggleFocusedSelection: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.toggleFocusedSelection();
+      } else {
+        toggleFocusedSelection();
+      }
+    },
+    openFocusedItem: () => {
+      if (isDualMode.value) {
+        getActivePanelMethods()?.openFocusedItem();
+      } else {
+        const item = getFocusedItem(processedFiles.value);
+        if (item) {
+          handleItemDoubleClick(item);
+        }
+      }
+    },
+  },
+  () => isDualMode.value ? (getActivePanelMethods()?.getFiles() || []) : files.value
 );
 
 useKeyboard(shortcuts);
 
-// Swipe navigation (two-finger swipe on trackpad) - works in both modes
+// Swipe navigation
 useSwipeNavigation({
   onSwipeLeft: () => {
     if (isDualMode.value) {
-      // In dual mode, navigate back in active panel's history
-      const methods = getActivePanelMethods();
-      if (methods) methods.goBack();
+      getActivePanelMethods()?.goBack();
     } else {
       goBack();
     }
   },
   onSwipeRight: () => {
     if (isDualMode.value) {
-      // In dual mode, navigate forward in active panel's history
-      const methods = getActivePanelMethods();
-      if (methods) methods.goForward();
+      getActivePanelMethods()?.goForward();
     } else {
       goForward();
     }
   },
   canSwipeLeft: () => {
     if (isDualMode.value) {
-      // In dual mode, check if active panel can go back
       const methods = getActivePanelMethods();
       return methods ? methods.canGoBack() : false;
     }
@@ -1088,7 +1009,6 @@ useSwipeNavigation({
   },
   canSwipeRight: () => {
     if (isDualMode.value) {
-      // In dual mode, check if active panel can go forward
       const methods = getActivePanelMethods();
       return methods ? methods.canGoForward() : false;
     }
@@ -1096,603 +1016,25 @@ useSwipeNavigation({
   },
 });
 
-// Text editor handlers
-const handleEditFile = (file: FileItem, panelFs?: string) => {
-  editorFile.value = file;
-  editorFileFs.value = panelFs;
-  showTextEditor.value = true;
-};
+// ============================================================================
+// WATCHERS
+// ============================================================================
 
-const handlePreviewFile = (file: FileItem) => {
-  previewFile.value = file;
-  showDashboard.value = false;
-};
-
-const handleCloseEditor = () => {
-  showTextEditor.value = false;
-  editorFile.value = null;
-  editorFileFs.value = undefined;
-};
-
-const handleSaveFile = async (content: string) => {
-  const { success, error } = useNotifications();
-  const { invalidate } = useFileContentCache();
-  if (!editorFile.value) return;
-
-  try {
-    await writeFileContent(editorFile.value.path, content, editorFileFs.value);
-    // Invalidate cache for this file so next time it loads fresh content
-    invalidate(editorFile.value.path, editorFileFs.value);
-    success('File saved', `Saved: ${editorFile.value.name}`);
-    showTextEditor.value = false;
-    editorFile.value = null;
-    editorFileFs.value = undefined;
-    // Refresh directory to show updated file
-    await refreshCurrentDirectory();
-  } catch (err) {
-    error('Failed to save file', err instanceof Error ? err.message : 'Unknown error');
+// Watch vault unlock to refresh files
+watch(() => vault.status.value, async (newStatus) => {
+  if (newStatus === 'UNLOCKED') {
+    console.log('[App] 🔓 Vault unlocked - refreshing view');
+    setTimeout(async () => {
+      await handleGlobalRefresh();
+    }, 50);
   }
-};
-
-// State for queue operation dialog
-const queueOperationPending = ref<{
-  type: 'copy' | 'move' | 'delete' | 'archive' | 'extract';
-  items: FileItem[];
-} | null>(null);
-
-// Add to queue handler
-const handleQueueOperation = async (operationType: 'copy' | 'move' | 'delete' | 'archive' | 'extract') => {
-  const { success, error } = useNotifications();
-
-  try {
-    // Determine FS
-    let sourceFs: string | undefined = undefined;
-    let destinationFs: string | undefined = undefined;
-    if (isDualMode.value) {
-        sourceFs = activePanel.value === 'left' ? leftPanelFilesystem.value : rightPanelFilesystem.value;
-        destinationFs = activePanel.value === 'left' ? leftPanelFilesystem.value : rightPanelFilesystem.value;
-    } else {
-        const config = await invoke<any>('get_config');
-        sourceFs = config.filesystem_backend === 'virtual' ? 'virtual' : 'real';
-    }
-
-    // Get selected items
-    let selectedItems: FileItem[] = [];
-    if (isDualMode.value) {
-      const methods = getActivePanelMethods();
-      if (methods) {
-        selectedItems = methods.getSelectedItems();
-      }
-    } else {
-      selectedItems = getSelected();
-    }
-
-    if (selectedItems.length === 0) {
-      return;
-    }
-
-    // For Copy and Move, we need to ask for destination
-    if (operationType === 'copy' || operationType === 'move') {
-      queueOperationPending.value = { type: operationType, items: selectedItems };
-
-      // Show input dialog to select destination
-      showInput(
-        operationType === 'copy' ? 'Copy to...' : 'Move to...',
-        'Enter destination path:',
-        async (destinationPath: string) => {
-          if (destinationPath) {
-            // Assume destination FS is same as source if entering path manually
-            await executeQueueOperation(operationType, selectedItems, destinationPath, sourceFs, destinationFs);
-          }
-          queueOperationPending.value = null;
-        },
-        '/', // default value
-        '/path/to/destination' // placeholder
-      );
-      return;
-    }
-
-    // For Delete, Extract, Archive - execute directly
-    // Use sourceFs as destFs for Archive/Extract (same dir by default)
-    await executeQueueOperation(operationType, selectedItems, undefined, sourceFs, destinationFs);
-  } catch (err) {
-    error('Failed to add to queue', err instanceof Error ? err.message : String(err));
-    queueOperationPending.value = null;
-  }
-};
-
-// Execute queue operation
-const executeQueueOperation = async (
-  operationType: 'copy' | 'move' | 'delete' | 'archive' | 'extract',
-  items: FileItem[],
-  destination?: string,
-  sourceFs?: string,
-  destFs?: string
-) => {
-  const { success, error } = useNotifications();
-
-  try {
-    for (const item of items) {
-      let params: any;
-      let description = '';
-
-      switch (operationType) {
-        case 'copy':
-          params = {
-            type: 'Copy',
-            sources: [item.path],
-            destination: destination || '',
-            sourceFs: sourceFs,
-            destFs: destFs,
-          };
-          description = `Copy ${item.name} to ${destination}`;
-          break;
-
-        case 'move':
-          params = {
-            type: 'Move',
-            sources: [item.path],
-            destination: destination || '',
-            sourceFs: sourceFs,
-            destFs: destFs,
-          };
-          description = `Move ${item.name} to ${destination}`;
-          break;
-
-        case 'delete':
-          params = {
-            type: 'Delete',
-            paths: [item.path],
-            panelFs: sourceFs,
-            sourceFs: sourceFs,
-          };
-          description = `Delete ${item.name}`;
-          break;
-
-        case 'archive':
-          // Get current directory path
-          let currentDir = '';
-          if (isDualMode.value) {
-            currentDir = '/' + activePanelPath.value.join('/');
-          } else {
-            currentDir = '/' + currentPath.value.join('/');
-          }
-
-          const archiveName = `${item.name}.zip`;
-          const archivePathVal = currentDir.endsWith('/') ? `${currentDir}${archiveName}` : `${currentDir}/${archiveName}`;
-
-          params = {
-            type: 'Archive',
-            sources: [item.path],
-            archivePath: archivePathVal,
-            format: 'zip',
-            sourceFs: sourceFs,
-            destFs: destFs,
-          };
-          description = `Create archive ${archiveName}`;
-          break;
-
-        case 'extract':
-          // Get current directory path
-          let extractDir = '';
-          if (isDualMode.value) {
-            extractDir = '/' + activePanelPath.value.join('/');
-          } else {
-            extractDir = '/' + currentPath.value.join('/');
-          }
-
-          params = {
-            type: 'Extract',
-            archivePath: item.path,
-            destination: extractDir,
-            sourceFs: sourceFs,
-            destFs: destFs,
-          };
-          description = `Extract ${item.name}`;
-          break;
-
-        default:
-          throw new Error(`Unknown operation type: ${operationType}`);
-      }
-
-      await addOperation(operationType, params, {
-        priority: 'normal',
-        description,
-        tags: ['context-menu'],
-      });
-    }
-
-    success('Added to Queue', `${items.length} item(s) added to operations queue`);
-
-    // Open queue panel to show the added operations
-    showOperationsQueue.value = true;
-  } catch (err) {
-    error('Failed to add to queue', err instanceof Error ? err.message : String(err));
-  }
-};
-
-// Context menu handlers (work in both single and dual modes)
-const contextMenuHandlers = {
-  open: () => {
-    if (contextMenu.value?.item) {
-      fileOps.handleOpenFile(contextMenu.value.item);
-    }
-  },
-  edit: () => {
-    if (contextMenu.value?.item) {
-      if (isDualMode.value) {
-        const methods = getActivePanelMethods();
-        if (methods) methods.handleEditFile();
-      } else {
-        handleEditFile(contextMenu.value.item, );
-      }
-    }
-  },
-  copy: () => {
-    if (isDualMode.value) {
-      const methods = getActivePanelMethods();
-      if (methods) methods.handleCopy();
-    } else {
-      fileOps.handleCopy(getSelected());
-    }
-  },
-  cut: () => {
-    if (isDualMode.value) {
-      const methods = getActivePanelMethods();
-      if (methods) methods.handleCut();
-    } else {
-      fileOps.handleCut(getSelected());
-    }
-  },
-  paste: () => {
-    if (isDualMode.value) {
-      const methods = getActivePanelMethods();
-      if (methods) methods.handlePaste();
-    } else {
-      fileOps.handlePaste(currentPath.value);
-    }
-  },
-  rename: () => {
-    if (isDualMode.value) {
-      const methods = getActivePanelMethods();
-      if (methods) methods.handleRename();
-    } else {
-      fileOps.handleRename(getSelected(), currentPath.value, showInput);
-    }
-  },
-  delete: () => {
-    if (isDualMode.value) {
-      const methods = getActivePanelMethods();
-      if (methods) methods.handleDelete();
-    } else {
-      fileOps.handleDelete(getSelected(), currentPath.value, clearSelection, showConfirm);
-    }
-  },
-  addToFavorites: () => {
-    if (contextMenu.value?.item) {
-      handleAddFolderToBookmarks(contextMenu.value.item);
-    }
-  },
-  openTerminal: () => {
-    if (contextMenu.value?.item) {
-      handleOpenTerminal(contextMenu.value.item);
-    }
-  },
-  extractHere: async () => {
-    if (contextMenu.value?.item) {
-        const item = contextMenu.value.item;
-        const { success, error } = useNotifications();
-        
-        let currentDirPath = '';
-        if (isDualMode.value) {
-            currentDirPath = '/' + activePanelPath.value.join('/');
-        } else {
-            currentDirPath = '/' + currentPath.value.join('/');
-        }
-        
-        const destination = currentDirPath.endsWith('/') ? currentDirPath : currentDirPath + '/';
-            
-        try {
-            await extractArchive(item.path, destination);
-            success('Extracted', `Extracted ${item.name}`);
-            
-            // Refresh
-             if (isDualMode.value) {
-                getActivePanelMethods()?.handleRefresh();
-             } else {
-                handleRefresh();
-             }
-        } catch (err) {
-            error('Extraction failed', err instanceof Error ? err.message : String(err));
-        }
-    }
-  },
-  extractToFolder: async () => {
-    if (contextMenu.value?.item) {
-        const item = contextMenu.value.item;
-        const { success, error } = useNotifications();
-        
-        // Extract to a folder with the same name as the archive
-        const folderName = item.name.replace(/\.(zip|tar|gz|tgz)$/i, '');
-        let currentDirPath = '';
-        if (isDualMode.value) {
-            currentDirPath = '/' + activePanelPath.value.join('/');
-        } else {
-            currentDirPath = '/' + currentPath.value.join('/');
-        }
-        
-        const destination = currentDirPath.endsWith('/') 
-            ? `${currentDirPath}${folderName}` 
-            : `${currentDirPath}/${folderName}`;
-            
-        try {
-            await extractArchive(item.path, destination);
-            success('Extracted', `Extracted ${item.name} to ${folderName}`);
-            
-            // Refresh
-             if (isDualMode.value) {
-                getActivePanelMethods()?.handleRefresh();
-             } else {
-                handleRefresh();
-             }
-        } catch (err) {
-            error('Extraction failed', err instanceof Error ? err.message : String(err));
-        }
-    }
-  },
-  compressToZip: async () => {
-      await handleCompress('zip');
-  },
-  compressToTar: async () => {
-      await handleCompress('tar');
-  },
-  compressToTarGz: async () => {
-      await handleCompress('tar.gz');
-  },
-  properties: () => {
-    if (isDualMode.value) {
-      const methods = getActivePanelMethods();
-      if (methods) {
-        const selected = methods.getSelectedItems();
-        if (selected.length === 1) {
-          propertiesDialog.value = { isOpen: true, file: selected[0] };
-        }
-      }
-    } else {
-      const selected = getSelected();
-      if (selected.length === 1) {
-        propertiesDialog.value = { isOpen: true, file: selected[0] };
-      }
-    }
-  },
-  batchRename: () => {
-    if (isDualMode.value) {
-      const methods = getActivePanelMethods();
-      if (methods) {
-        const selected = methods.getSelectedItems();
-        if (selected.length > 0) {
-          batchOperationFiles.value = selected;
-          showBatchRenameDialog.value = true;
-        }
-      }
-    } else {
-      const selected = getSelected();
-      if (selected.length > 0) {
-        batchOperationFiles.value = selected;
-        showBatchRenameDialog.value = true;
-      }
-    }
-  },
-  batchAttributes: () => {
-    if (isDualMode.value) {
-      const methods = getActivePanelMethods();
-      if (methods) {
-        const selected = methods.getSelectedItems();
-        if (selected.length > 0) {
-          batchOperationFiles.value = selected;
-          showBatchAttributeDialog.value = true;
-        }
-      }
-    } else {
-      const selected = getSelected();
-      if (selected.length > 0) {
-        batchOperationFiles.value = selected;
-        showBatchAttributeDialog.value = true;
-      }
-    }
-  },
-  refresh: () => {
-     if (isDualMode.value) {
-        getActivePanelMethods()?.handleRefresh();
-     } else {
-        handleRefresh();
-     }
-  },
-  newFolder: () => {
-     if (isDualMode.value) {
-        getActivePanelMethods()?.handleNewFolder();
-     } else {
-        fileOps.handleNewFolder(currentPath.value, showInput);
-     }
-  },
-  newFile: () => {
-     if (isDualMode.value) {
-        getActivePanelMethods()?.handleNewFile();
-     } else {
-        inlineCreatorMode.value = 'file';
-        showInlineCreator.value = true;
-     }
-  },
-  selectAll: () => {
-     if (isDualMode.value) {
-        getActivePanelMethods()?.selectAll();
-     } else {
-        handleSelectAll();
-     }
-  },
-  queueCopy: async () => {
-    await handleQueueOperation('copy');
-  },
-  queueMove: async () => {
-    await handleQueueOperation('move');
-  },
-  queueDelete: async () => {
-    await handleQueueOperation('delete');
-  },
-  queueArchive: async () => {
-    await handleQueueOperation('archive');
-  },
-  queueExtract: async () => {
-    await handleQueueOperation('extract');
-  },
-  share: async () => {
-    if (contextMenu.value?.item) {
-      const { success, error } = useNotifications();
-      
-      let currentFs: string | undefined = undefined;
-      if (isDualMode.value) {
-          currentFs = activePanel.value === 'left' ? leftPanelFilesystem.value : rightPanelFilesystem.value;
-      } else {
-          try {
-            const config = await invoke<any>('get_config');
-            currentFs = config.filesystem_backend === 'virtual' ? 'virtual' : 'real';
-          } catch (e) {
-            console.error('Failed to get config for share:', e);
-          }
-      }
-
-      try {
-        const result = await invoke<{ url: string; qr_svg: string; filename: string }>('share_file', {
-          path: contextMenu.value.item.path,
-          filesystem: currentFs
-        });
-        shareInfo.value = result;
-        showShareDialog.value = true;
-        success('Ready to Share', `Scan QR code to download ${result.filename}`);
-      } catch (err) {
-        error('Share failed', err instanceof Error ? err.message : String(err));
-      }
-    }
-  },
-};
-
-// Batch operations handlers
-const handleBatchRenameConfirm = async (config: BatchRenameConfig) => {
-  try {
-    await queueBatchRename(batchOperationFiles.value, config);
-    showBatchRenameDialog.value = false;
-    batchOperationFiles.value = [];
-    showBatchQueue.value = true;
-    clearSelection();
-    // Refresh will happen automatically after operation completes
-  } catch (err) {
-    console.error('Batch rename failed:', err);
-    // Show error notification
-  }
-};
-
-const handleBatchAttributeConfirm = async (changes: BatchAttributeChange) => {
-  try {
-    await queueBatchAttributeChange(batchOperationFiles.value, changes);
-    showBatchAttributeDialog.value = false;
-    batchOperationFiles.value = [];
-    showBatchQueue.value = true;
-    clearSelection();
-    // Refresh will happen automatically after operation completes
-  } catch (err) {
-    console.error('Batch attribute change failed:', err);
-    // Show error notification
-  }
-};
-
-const handleBatchDialogCancel = () => {
-  showBatchRenameDialog.value = false;
-  showBatchAttributeDialog.value = false;
-  batchOperationFiles.value = [];
-};
-
-const handleCompress = async (format: 'zip' | 'tar' | 'tar.gz') => {
-    const { success, error } = useNotifications();
-    
-    // Get selected items
-    let selectedItems: FileItem[] = [];
-    if (isDualMode.value) {
-        const methods = getActivePanelMethods();
-        if (methods) {
-            selectedItems = methods.getSelectedItems();
-        }
-    } else {
-        selectedItems = getSelected();
-    }
-
-    if (selectedItems.length === 0) return;
-
-    // Determine archive name
-    let archiveName = 'archive';
-    if (selectedItems.length === 1) {
-        archiveName = selectedItems[0].name;
-    } else {
-        // Use parent folder name if multiple items
-        let currentDirPath = '';
-        if (isDualMode.value) {
-            currentDirPath = '/' + activePanelPath.value.join('/');
-        } else {
-            currentDirPath = '/' + currentPath.value.join('/');
-        }
-        const parentName = currentDirPath.split('/').pop() || 'archive';
-        archiveName = parentName;
-    }
-
-    // Prompt for name
-    showInput(
-        'Create Archive',
-        'Enter archive name:',
-        async (name: string) => {
-            if (!name) return closeInput();
-            
-            let filename = name;
-            if (!filename.endsWith(`.${format}`)) {
-                filename += `.${format}`;
-            }
-
-            let currentDirPath = '';
-            if (isDualMode.value) {
-                currentDirPath = '/' + activePanelPath.value.join('/');
-            } else {
-                currentDirPath = '/' + currentPath.value.join('/');
-            }
-            
-            const destinationPath = currentDirPath.endsWith('/') 
-                ? `${currentDirPath}${filename}` 
-                : `${currentDirPath}/${filename}`;
-
-            const sourcePaths = selectedItems.map(i => i.path);
-
-            try {
-                await createArchive(sourcePaths, destinationPath);
-                success('Archive Created', `Created ${filename}`);
-                closeInput();
-                
-                // Refresh
-                 if (isDualMode.value) {
-                    getActivePanelMethods()?.handleRefresh();
-                 } else {
-                    handleRefresh();
-                 }
-            } catch (err) {
-                error('Compression failed', err instanceof Error ? err.message : String(err));
-            }
-        },
-        archiveName
-    );
-};
+});
 
 // Watch current path and load directory
 watch(currentPath, async () => {
-  const pathString = await fileOps.getCurrentDirectory(currentPath.value, currentFilesystemBackend.value);
-  await loadDirectory(pathString, currentFilesystemBackend.value);
+  const pathString = await fileOps.getCurrentDirectory(currentPath.value, appUI.currentFilesystemBackend.value);
+  await loadDirectory(pathString, appUI.currentFilesystemBackend.value);
   clearSelection();
-  // Устанавливаем фокус на первый элемент после загрузки
   if (processedFiles.value.length > 0) {
     setFocused(processedFiles.value[0].id);
   } else {
@@ -1700,8 +1042,7 @@ watch(currentPath, async () => {
   }
 });
 
-// Save tabs and paths - DIRECT SIMPLE VERSION
-// ВАЖНО: deep: true чтобы отслеживать изменения внутри объектов!
+// Save UI state
 watch([
   tabs,
   activeTabId,
@@ -1718,20 +1059,9 @@ watch([
   isTerminalVisible,
   terminalHeight
 ], async () => {
-  console.log('[App] 🔥 State changed:');
-  console.log('  - Tabs:', tabs.value.length);
-  console.log('  - Active tab:', activeTabId.value);
-  console.log('  - Current path:', currentPath.value);
-  console.log('  - Panel mode:', panelMode.value);
-  console.log('  - Expanded folders:', expandedFolders.value.length);
-  console.log('  - Sidebar quickAccess:', sidebarSectionsExpanded.value.quickAccess);
-  console.log('  - Sidebar folderTree:', sidebarSectionsExpanded.value.folderTree);
-  console.log('  - Sidebar favorites:', sidebarSectionsExpanded.value.favorites);
+  console.log('[App] 🔥 State changed');
 
   try {
-    const { invoke } = await import('@tauri-apps/api/core');
-
-    // Сохраняем все табы со своими путями
     const tabsToSave = tabs.value.map(tab => ({
       id: tab.id,
       path: tab.path,
@@ -1758,7 +1088,7 @@ watch([
       edit_mode_enabled: editModeEnabled.value,
     };
 
-    console.log('[App] 💾 Saving state with sidebar:', stateToSave.sidebar);
+    console.log('[App] 💾 Saving state');
     await invoke('save_ui_state', { uiState: stateToSave });
     console.log('[App] ✅ Save successful!');
   } catch (error) {
@@ -1766,51 +1096,43 @@ watch([
   }
 }, { deep: true });
 
-// System stats update function
-const updateSystemStats = async () => {
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    const stats = await invoke<{ memory_mb: number; cpu_percent: number }>('get_system_stats');
-    systemStats.value = stats;
-  } catch (error) {
-    console.error('[App] Failed to get system stats:', error);
-  }
-};
+// ============================================================================
+// LIFECYCLE
+// ============================================================================
 
-// Click outside handler
 onMounted(async () => {
+  // Event listeners
   document.addEventListener('click', closeContextMenu);
   window.addEventListener('vf-refresh-all', handleGlobalRefresh);
-  
-  // Listen for filesystem backend changes from Settings
+
+  // Listen for filesystem backend changes
   window.addEventListener('fs-config-changed', async () => {
     try {
       const config = await invoke<any>('get_config');
       const isVirtualFS = config.filesystem_backend === 'virtual';
       console.log('[App] 🔄 FS Config changed. New backend:', isVirtualFS ? 'virtual' : 'real');
-      
-      currentFilesystemBackend.value = isVirtualFS ? 'virtual' : 'real';
+
+      appUI.currentFilesystemBackend.value = isVirtualFS ? 'virtual' : 'real';
       await vault.checkStatus();
-      
-      // Reset navigation to home of the new backend to ensure valid state
-      const home = await getHomeDirectory(currentFilesystemBackend.value);
+
+      const home = await getHomeDirectory(appUI.currentFilesystemBackend.value);
       const pathParts = home.split('/').filter(p => p);
       navigateTo(pathParts);
-      
+
       await handleGlobalRefresh();
     } catch (e) {
       console.error('[App] Failed to handle FS config change:', e);
     }
   });
 
-  // Check vault status FIRST
+  // Check vault status
   await vault.checkStatus();
 
-  // Load and apply theme FIRST (before any other initialization)
+  // Load theme
   const { loadTheme } = useTheme();
   await loadTheme();
 
-  // Load File Coloring Config
+  // Load file coloring config
   const { loadConfig: loadColorConfig } = useFileColoring();
   loadColorConfig();
 
@@ -1823,15 +1145,23 @@ onMounted(async () => {
   }
 
   // Start system stats updates
+  const updateSystemStats = async () => {
+    try {
+      const stats = await invoke<{ memory_mb: number; cpu_percent: number }>('get_system_stats');
+      appUI.updateSystemStats(stats);
+    } catch (error) {
+      console.error('[App] Failed to get system stats:', error);
+    }
+  };
+
   updateSystemStats();
-  setInterval(updateSystemStats, 2000); // Update every 2 seconds
+  setInterval(updateSystemStats, 2000);
 
   // Load UI state and restore tabs
-  // ВАЖНО: сначала загружаем через useUIState чтобы sidebar состояние восстановилось
   const uiState = await loadUIState();
   console.log('[App] ===== Loaded UI state:', uiState);
 
-  // Восстановить режим панелей
+  // Restore panel mode
   if (uiState?.panel_mode) {
     console.log('[App] ✅ Restoring panel mode:', uiState.panel_mode);
     panelMode.value = uiState.panel_mode;
@@ -1842,17 +1172,14 @@ onMounted(async () => {
     }
   }
 
-  // Восстановить табы если есть (для обоих режимов)
+  // Restore tabs for single mode
   if (!isDualMode.value) {
-    // Check current filesystem backend configuration
     const config = await invoke<any>('get_config');
     const isVirtualFS = config.filesystem_backend === 'virtual';
-    console.log("is vfs = ", isVirtualFS)
-    
-    // Update global ref so watcher can use it
-    currentFilesystemBackend.value = isVirtualFS ? 'virtual' : 'real';
+    console.log("is vfs = ", isVirtualFS);
 
-    // Allow restoration for both Real and Virtual FS
+    appUI.currentFilesystemBackend.value = isVirtualFS ? 'virtual' : 'real';
+
     if (uiState && uiState.tabs && uiState.tabs.length > 0) {
       console.log('[App] ✅ Restoring', uiState.tabs.length, 'tabs');
 
@@ -1864,36 +1191,30 @@ onMounted(async () => {
         historyIndex: 0,
       }));
 
-      // Восстановить активный таб
       if (uiState.active_tab_id) {
         console.log('[App] ✅ Restoring active tab:', uiState.active_tab_id);
         activeTabId.value = uiState.active_tab_id;
       }
     } else if (uiState && uiState.last_path && uiState.last_path.length > 0) {
-      // Restore last path for both Real and Virtual FS
       console.log('[App] ✅ Restoring last path:', uiState.last_path);
       navigateTo(uiState.last_path);
     } else {
-      // No saved state or empty - default behavior
       console.log('[App] ℹ️ No tabs/path to restore - navigating to home');
-      const currentFs = currentFilesystemBackend.value;
+      const currentFs = appUI.currentFilesystemBackend.value;
       const home = await getHomeDirectory(currentFs);
       console.log('[App] 🏠 Home directory:', home);
-      
-      // Navigate to home (this updates currentPath and triggers the watcher to load files)
+
       const pathParts = home.split('/').filter(p => p);
       navigateTo(pathParts);
     }
 
-    // Force initial load to ensure content is visible
-    // This handles cases where watcher might not trigger (e.g. same path) or race conditions
+    // Force initial load
     setTimeout(async () => {
-        const pathString = await fileOps.getCurrentDirectory(currentPath.value, currentFilesystemBackend.value);
-        console.log('[App] 🚀 Force initial load:', pathString, 'Backend:', currentFilesystemBackend.value);
-        await loadDirectory(pathString, currentFilesystemBackend.value);
+      const pathString = await fileOps.getCurrentDirectory(currentPath.value, appUI.currentFilesystemBackend.value);
+      console.log('[App] 🚀 Force initial load:', pathString, 'Backend:', appUI.currentFilesystemBackend.value);
+      await loadDirectory(pathString, appUI.currentFilesystemBackend.value);
     }, 100);
   } else {
-    // Dual mode: check if we need to initialize home for virtual FS
     const config = await invoke<any>('get_config');
     const isVirtualFS = config.filesystem_backend === 'virtual';
     if (isVirtualFS && (!uiState || !uiState.dual_panel_config)) {
@@ -1929,84 +1250,80 @@ onMounted(async () => {
 
     <!-- Toolbar -->
     <Toolbar
-        :tabs="isDualMode ? activePanelTabs : tabs"
-        :active-tab-id="(isDualMode ? activePanelTabId : activeTabId) ?? 0"
-        :current-path="isDualMode ? activePanelPath : currentPath"
-        :view-mode="viewMode"
-        :panel-mode="panelMode"
-        :can-go-back="canGoBackComputed"
-        :can-go-forward="canGoForwardComputed"
-        :can-go-up="canGoUp"
-        :is-current-path-bookmarked="isCurrentPathBookmarked"
-        :is-programmer-mode="isProgrammerMode"
-        :group-by="groupBy"
-        :group-by-options="groupByOptions"
-        :queue-active-count="queueActiveCount"
-        @go-back="handleGoBack"
-        @go-forward="handleGoForward"
-        @go-up="handleGoUp"
-        @go-home="handleGoHome"
-        @navigate-to-breadcrumb="navigateToBreadcrumb"
-        @navigate-to-path="handleNavigateToPath"
-        @switch-tab="switchTab"
-        @close-tab="closeTab"
-        @add-tab="handleAddTab"
-        @update:view-mode="(mode) => viewMode = mode"
-        @open-command-palette="() => isCommandPaletteOpen = true"
-        @toggle-bookmark="handleToggleBookmark"
-        @toggle-programmer-mode="toggleProgrammerMode"
-        @toggle-panel-mode="togglePanelMode"
-        @toggle-dashboard="handleToggleDashboard"
-        @toggle-operations-queue="() => showOperationsQueue = !showOperationsQueue"
-        @update:group-by="(value) => groupBy = value"
+      :tabs="isDualMode ? activePanelTabs : tabs"
+      :active-tab-id="(isDualMode ? activePanelTabId : activeTabId) ?? 0"
+      :current-path="isDualMode ? activePanelPath : currentPath"
+      :view-mode="appUI.viewMode.value"
+      :panel-mode="panelMode"
+      :can-go-back="canGoBackComputed"
+      :can-go-forward="canGoForwardComputed"
+      :can-go-up="canGoUp"
+      :is-current-path-bookmarked="isCurrentPathBookmarked"
+      :is-programmer-mode="isProgrammerMode"
+      :group-by="groupBy"
+      :group-by-options="groupByOptions"
+      :queue-active-count="queueActiveCount"
+      @go-back="handleGoBack"
+      @go-forward="handleGoForward"
+      @go-up="handleGoUp"
+      @go-home="handleGoHome"
+      @navigate-to-breadcrumb="navigateToBreadcrumb"
+      @navigate-to-path="handleNavigateToPath"
+      @switch-tab="switchTab"
+      @close-tab="closeTab"
+      @add-tab="handleAddTab"
+      @update:view-mode="(mode) => appUI.viewMode.value = mode"
+      @open-command-palette="appUI.openCommandPalette"
+      @toggle-bookmark="handleToggleBookmark"
+      @toggle-programmer-mode="toggleProgrammerMode"
+      @toggle-panel-mode="togglePanelMode"
+      @toggle-dashboard="appUI.toggleDashboard"
+      @toggle-operations-queue="appUI.toggleOperationsQueue"
+      @update:group-by="(value) => groupBy = value"
     />
 
-    <!-- Programmer Toolbar (only visible in Programmer Mode) -->
+    <!-- Programmer Toolbar -->
     <ProgrammerToolbar
-        v-if="isProgrammerMode"
-        :has-multiple-selected="hasMultipleSelected"
-        :is-terminal-visible="isTerminalVisible"
-        @toggle-terminal="toggleTerminal"
-        @batch-rename="showBatchRenameDialog = true"
-        @open-ftp="() => { /* TODO: implement FTP */ }"
-        @toggle-resource-monitor="toggleWidget('resource-monitor')"
-        @open-file-colors="() => { settingsInitialTab = 'colors'; showSettings = true; }"
-        @open-widgets="showWidgetSelector = true"
+      v-if="isProgrammerMode"
+      :has-multiple-selected="hasMultipleSelected"
+      :is-terminal-visible="isTerminalVisible"
+      @toggle-terminal="toggleTerminal"
+      @batch-rename="appUI.showBatchRenameDialog.value = true"
+      @open-ftp="() => {}"
+      @toggle-resource-monitor="toggleWidget('resource-monitor')"
+      @open-file-colors="() => appUI.openSettings('colors')"
+      @open-widgets="openWidgetSelector"
     />
 
     <!-- Main Content Area -->
     <div class="flex-1 flex flex-col overflow-hidden">
-      <!-- File panels (flex-1) -->
       <div class="flex-1 flex overflow-hidden">
         <!-- Dual Panel Mode -->
         <DualPanelContainer
           v-if="isDualMode"
-          :view-mode="viewMode"
-          @edit-file="handleEditFile"
-          @preview-file="handlePreviewFile"
+          :view-mode="appUI.viewMode.value"
+          @edit-file="editor.openEditor"
+          @preview-file="appUI.openPreview"
         />
 
         <!-- Single Panel Mode -->
         <template v-else>
-        <!-- Sidebar -->
-        <Sidebar
+          <Sidebar
             :current-path="'/' + currentPath.join('/')"
             :width="sidebarWidth"
             @navigate="(path) => navigateTo(path.split('/').filter((p: any) => p))"
             @drop="handleSidebarDrop"
             @resize="handleSidebarResize"
-        />
+          />
 
-        <!-- Main Area -->
-        <div class="flex-1 flex flex-col overflow-hidden">
-          <!-- Panel Toolbar (for single mode) -->
-          <PanelToolbar
+          <div class="flex-1 flex flex-col overflow-hidden">
+            <PanelToolbar
               :tabs="tabs"
               :active-tab-id="activeTabId"
               :current-path="currentPath"
-              :sort-by="sortBy"
-              :sort-order="sortOrder"
-              :show-hidden="showHidden"
+              :sort-by="appUI.sortBy.value"
+              :sort-order="appUI.sortOrder.value"
+              :show-hidden="appUI.showHidden.value"
               :edit-mode-enabled="editModeEnabled"
               @switch-tab="(id) => activeTabId = id"
               @close-tab="closeTab"
@@ -2018,66 +1335,63 @@ onMounted(async () => {
               @toggle-hidden="handleToggleHidden"
               @toggle-edit-mode="handleToggleEditMode"
               @navigate-to-breadcrumb="navigateToBreadcrumb"
-          />
+            />
 
-          <div class="flex-1 flex overflow-hidden">
-          <!-- File List -->
-          <FileList
-              :items="processedFiles"
-              :groups="fileGroups"
-              :view-mode="viewMode"
-              :selected-ids="selectedIds"
-              :focused-id="focusedId"
-              :is-loading="isLoading"
-              :is-dragging="isDragging"
-              :drag-target-id="dragOverId"
-              :show-inline-creator="showInlineCreator"
-              :inline-creator-mode="inlineCreatorMode"
-              :current-path="currentPath"
-              @item-click="(item, event) => handleItemClick(item, files, event)"
-              @item-double-click="handleItemDoubleClick"
-              @item-context-menu="handleContextMenu"
-              @background-context-menu="(event) => showContextMenu(null, event)"
-              @drag-start="handleDragStart"
-              @drag-over="handleDragOver"
-              @drag-leave="handleDragLeave"
-              @drop="handleItemDrop"
-              @drop-on-background="handleBackgroundDrop"
-              @drag-over-background="handleDragOverBackground"
-              @toggle-selection="(item) => handleItemClick(item, files, { ctrlKey: true } as MouseEvent)"
-              @copy-item="(item) => fileOps.handleCopy([item])"
-              @cut-item="(item) => fileOps.handleCut([item])"
-              @delete-item="(item) => fileOps.handleDelete([item], currentPath, clearSelection, showConfirm)"
-              @create-file="handleCreateFile"
-              @batch-create-files="handleBatchCreateFiles"
-              @cancel-inline-creator="handleCancelInlineCreator"
-              @rename-item="(item) => fileOps.handleRename([item], currentPath, showInput)"
-              @open-terminal="handleOpenTerminal"
-          />
+            <div class="flex-1 flex overflow-hidden">
+              <FileList
+                :items="processedFiles"
+                :groups="fileGroups"
+                :view-mode="appUI.viewMode.value"
+                :selected-ids="selectedIds"
+                :focused-id="focusedId"
+                :is-loading="isLoading"
+                :is-dragging="isDragging"
+                :drag-target-id="dragOverId"
+                :show-inline-creator="appUI.showInlineCreator.value"
+                :inline-creator-mode="appUI.inlineCreatorMode.value"
+                :current-path="currentPath"
+                @item-click="(item, event) => handleItemClick(item, files, event)"
+                @item-double-click="handleItemDoubleClick"
+                @item-context-menu="handleContextMenu"
+                @background-context-menu="(event) => showContextMenu(null, event)"
+                @drag-start="handleDragStart"
+                @drag-over="handleDragOver"
+                @drag-leave="handleDragLeave"
+                @drop="handleItemDrop"
+                @drop-on-background="handleBackgroundDrop"
+                @drag-over-background="handleDragOverBackground"
+                @toggle-selection="(item) => handleItemClick(item, files, { ctrlKey: true } as MouseEvent)"
+                @copy-item="(item) => fileOps.handleCopy([item])"
+                @cut-item="(item) => fileOps.handleCut([item])"
+                @delete-item="(item) => fileOps.handleDelete([item], currentPath, clearSelection, showConfirm)"
+                @create-file="handleCreateFile"
+                @batch-create-files="handleBatchCreateFiles"
+                @cancel-inline-creator="appUI.closeInlineCreator"
+                @rename-item="(item) => fileOps.handleRename([item], currentPath, showInput)"
+                @open-terminal="(item) => openTerminal(item.path)"
+              />
 
-          <!-- Preview Panel -->
-          <Preview
-              :file="previewFile"
-              :width="previewWidth"
-              @close="previewFile = null"
-              @open="fileOps.handleOpenFile"
-              @resize="handlePreviewResize"
-          />
+              <Preview
+                :file="appUI.previewFile.value"
+                :width="previewWidth"
+                @close="appUI.closePreview"
+                @open="fileOps.handleOpenFile"
+                @resize="handlePreviewResize"
+              />
 
-          <!-- Dashboard Panel -->
-          <Dashboard
-              v-if="showDashboard"
-              :files="processedFiles"
-              :width="dashboardWidth"
-              @close="showDashboard = false"
-              @resize="handleDashboardResize"
-          />
+              <Dashboard
+                v-if="appUI.showDashboard.value"
+                :files="processedFiles"
+                :width="appUI.dashboardWidth.value"
+                @close="appUI.showDashboard.value = false"
+                @resize="handleDashboardResize"
+              />
+            </div>
           </div>
-        </div>
-      </template>
+        </template>
       </div>
 
-      <!-- Terminal Panel (bottom, if visible) -->
+      <!-- Terminal Panel -->
       <Terminal
         v-if="isTerminalVisible"
         :height="terminalHeight"
@@ -2087,122 +1401,112 @@ onMounted(async () => {
       />
     </div>
 
-    <!-- Command Palette -->
+    <!-- Dialogs & Overlays -->
     <CommandPalette
-        :is-open="isCommandPaletteOpen"
-        @close="isCommandPaletteOpen = false"
-        @execute="executeCommand"
+      :is-open="appUI.isCommandPaletteOpen.value"
+      @close="appUI.closeCommandPalette"
+      @execute="executeCommand"
     />
 
-    <!-- Context Menu -->
     <ContextMenu
-        v-if="contextMenu"
-        :x="contextMenu.x"
-        :y="contextMenu.y"
-        :item="contextMenu.item"
-        :selected-count="selectedCount"
-        :has-clipboard-content="hasClipboardItems"
-        @open="contextMenuHandlers.open"
-        @edit="contextMenuHandlers.edit"
-        @copy="contextMenuHandlers.copy"
-        @cut="contextMenuHandlers.cut"
-        @paste="contextMenuHandlers.paste"
-        @rename="contextMenuHandlers.rename"
-        @delete="contextMenuHandlers.delete"
-        @add-to-favorites="contextMenuHandlers.addToFavorites"
-        @open-terminal="contextMenuHandlers.openTerminal"
-        @extract-here="contextMenuHandlers.extractHere"
-        @extract-to-folder="contextMenuHandlers.extractToFolder"
-        @compress-to-zip="contextMenuHandlers.compressToZip"
-        @compress-to-tar="contextMenuHandlers.compressToTar"
-        @compress-to-tar-gz="contextMenuHandlers.compressToTarGz"
-        @properties="contextMenuHandlers.properties"
-        @batch-rename="contextMenuHandlers.batchRename"
-        @batch-attributes="contextMenuHandlers.batchAttributes"
-        @refresh="contextMenuHandlers.refresh"
-        @new-folder="contextMenuHandlers.newFolder"
-        @new-file="contextMenuHandlers.newFile"
-        @select-all="contextMenuHandlers.selectAll"
-        @queue-copy="contextMenuHandlers.queueCopy"
-        @queue-move="contextMenuHandlers.queueMove"
-        @queue-delete="contextMenuHandlers.queueDelete"
-        @queue-archive="contextMenuHandlers.queueArchive"
-        @queue-extract="contextMenuHandlers.queueExtract"
-        @share="contextMenuHandlers.share"
-        @close="closeContextMenu"
+      v-if="contextMenu"
+      :x="contextMenu.x"
+      :y="contextMenu.y"
+      :item="contextMenu.item"
+      :selected-count="selectedCount"
+      :has-clipboard-content="hasClipboardItems"
+      @open="contextMenuHandlers.open"
+      @edit="contextMenuHandlers.edit"
+      @copy="contextMenuHandlers.copy"
+      @cut="contextMenuHandlers.cut"
+      @paste="contextMenuHandlers.paste"
+      @rename="contextMenuHandlers.rename"
+      @delete="contextMenuHandlers.delete"
+      @add-to-favorites="contextMenuHandlers.addToFavorites"
+      @open-terminal="contextMenuHandlers.openTerminal"
+      @extract-here="contextMenuHandlers.extractHere"
+      @extract-to-folder="contextMenuHandlers.extractToFolder"
+      @compress-to-zip="contextMenuHandlers.compressToZip"
+      @compress-to-tar="contextMenuHandlers.compressToTar"
+      @compress-to-tar-gz="contextMenuHandlers.compressToTarGz"
+      @properties="contextMenuHandlers.properties"
+      @batch-rename="contextMenuHandlers.batchRename"
+      @batch-attributes="contextMenuHandlers.batchAttributes"
+      @refresh="contextMenuHandlers.refresh"
+      @new-folder="contextMenuHandlers.newFolder"
+      @new-file="contextMenuHandlers.newFile"
+      @select-all="contextMenuHandlers.selectAll"
+      @queue-copy="contextMenuHandlers.queueCopy"
+      @queue-move="contextMenuHandlers.queueMove"
+      @queue-delete="contextMenuHandlers.queueDelete"
+      @queue-archive="contextMenuHandlers.queueArchive"
+      @queue-extract="contextMenuHandlers.queueExtract"
+      @share="contextMenuHandlers.share"
+      @close="closeContextMenu"
     />
 
-    <!-- Notifications -->
     <Notifications />
 
-    <!-- Confirm Dialog -->
     <ConfirmDialog
-        :is-open="confirmDialog.isOpen"
-        :title="confirmDialog.title"
-        :message="confirmDialog.message"
-        :type="confirmDialog.type"
-        @confirm="() => { confirmDialog.onConfirm(); closeConfirm(); }"
-        @cancel="closeConfirm"
+      :is-open="confirmDialog.isOpen"
+      :title="confirmDialog.title"
+      :message="confirmDialog.message"
+      :type="confirmDialog.type"
+      @confirm="() => { confirmDialog.onConfirm(); closeConfirm(); }"
+      @cancel="closeConfirm"
     />
 
-    <!-- Properties Dialog -->
     <PropertiesDialog
-        :is-open="propertiesDialog.isOpen"
-        :file="propertiesDialog.file"
-        @close="closeProperties"
+      :is-open="propertiesDialog.isOpen"
+      :file="propertiesDialog.file"
+      @close="closeProperties"
     />
 
-    <!-- Input Dialog -->
     <InputDialog
-        :is-open="inputDialog.isOpen"
-        :title="inputDialog.title"
-        :label="inputDialog.label"
-        :default-value="inputDialog.defaultValue"
-        :placeholder="inputDialog.placeholder"
-        @confirm="(value) => { inputDialog.onConfirm(value); closeInput(); }"
-        @cancel="closeInput"
+      :is-open="inputDialog.isOpen"
+      :title="inputDialog.title"
+      :label="inputDialog.label"
+      :default-value="inputDialog.defaultValue"
+      :placeholder="inputDialog.placeholder"
+      @confirm="(value) => { inputDialog.onConfirm(value); closeInput(); }"
+      @cancel="closeInput"
     />
 
-    <!-- Conflict Resolution Dialog -->
     <ConflictDialog
-        :is-open="isConflictDialogOpen"
-        :conflict="currentConflict"
-        @resolve="handleResolution"
-        @cancel="handleConflictCancel"
+      :is-open="isConflictDialogOpen"
+      :conflict="currentConflict"
+      @resolve="handleResolution"
+      @cancel="handleConflictCancel"
     />
 
-    <!-- Settings -->
     <Settings
-        v-if="showSettings"
-        :initial-tab="settingsInitialTab"
-        @close="() => { showSettings = false; settingsInitialTab = 'general'; }"
+      v-if="appUI.showSettings.value"
+      :initial-tab="appUI.settingsInitialTab.value"
+      @close="appUI.closeSettings"
     />
 
-    <!-- Batch Rename Dialog -->
     <BatchRenameDialog
-        :is-open="showBatchRenameDialog"
-        :files="batchOperationFiles"
-        @confirm="handleBatchRenameConfirm"
-        @cancel="handleBatchDialogCancel"
+      :is-open="appUI.showBatchRenameDialog.value"
+      :files="appUI.batchOperationFiles.value"
+      @confirm="handleBatchRenameConfirm"
+      @cancel="appUI.closeBatchDialogs"
     />
 
-    <!-- Batch Attribute Dialog -->
     <BatchAttributeDialog
-        :is-open="showBatchAttributeDialog"
-        :files="batchOperationFiles"
-        @confirm="handleBatchAttributeConfirm"
-        @cancel="handleBatchDialogCancel"
+      :is-open="appUI.showBatchAttributeDialog.value"
+      :files="appUI.batchOperationFiles.value"
+      @confirm="handleBatchAttributeConfirm"
+      @cancel="appUI.closeBatchDialogs"
     />
 
-    <!-- Batch Operations Queue -->
     <div
-        v-if="showBatchQueue"
-        class="fixed bottom-5 right-5 w-[500px] h-[400px] bg-[var(--vf-surface-default)] border border-[var(--vf-border-default)] rounded-lg shadow-2xl overflow-hidden z-40"
+      v-if="appUI.showBatchQueue.value"
+      class="fixed bottom-5 right-5 w-[500px] h-[400px] bg-[var(--vf-surface-default)] border border-[var(--vf-border-default)] rounded-lg shadow-2xl overflow-hidden z-40"
     >
       <div class="flex items-center justify-between p-2 border-b border-[var(--vf-border-default)] bg-[var(--vf-bg-secondary)]">
         <h3 class="font-semibold text-sm">Batch Operations</h3>
         <button
-          @click="showBatchQueue = false"
+          @click="appUI.showBatchQueue.value = false"
           class="text-[var(--vf-text-secondary)] hover:text-[var(--vf-text-primary)] text-xl leading-none"
         >
           ×
@@ -2211,41 +1515,37 @@ onMounted(async () => {
       <BatchOperationsQueue />
     </div>
 
-    <!-- Operations Queue Panel -->
     <div
-      v-if="showOperationsQueue"
+      v-if="appUI.showOperationsQueue.value"
       class="fixed right-0 top-0 bottom-0 w-[500px] bg-[var(--vf-bg-primary)] border-l border-[var(--vf-border-default)] shadow-2xl z-[1000] flex flex-col"
     >
       <div class="flex items-center justify-between p-4 border-b border-[var(--vf-border-default)]">
         <h3 class="text-lg font-semibold text-[var(--vf-text-primary)]">Operations Queue</h3>
         <button
-          @click="showOperationsQueue = false"
+          @click="appUI.showOperationsQueue.value = false"
           class="text-[var(--vf-text-secondary)] hover:text-[var(--vf-text-primary)] text-xl leading-none"
         >
           ×
         </button>
       </div>
       <div class="flex-1 overflow-hidden">
-        <OperationsQueuePanel @open-settings="showQueueSettings = true" />
+        <OperationsQueuePanel @open-settings="appUI.showQueueSettings.value = true" />
       </div>
     </div>
 
-    <!-- Queue Settings Dialog -->
     <QueueSettingsDialog
-      :is-open="showQueueSettings"
-      @close="showQueueSettings = false"
+      :is-open="appUI.showQueueSettings.value"
+      @close="appUI.showQueueSettings.value = false"
     />
 
-    <!-- File Operations Progress -->
     <OperationsProgress />
 
-    <!-- Text Editor -->
     <TextEditor
-      :file="editorFile"
-      :panel-filesystem="editorFileFs"
-      :is-open="showTextEditor"
-      @close="handleCloseEditor"
-      @save="handleSaveFile"
+      :file="editor.editorFile.value"
+      :panel-filesystem="editor.editorFileFs.value"
+      :is-open="editor.showTextEditor.value"
+      @close="editor.closeEditor"
+      @save="(content) => editor.saveFile(content, refreshCurrentDirectory)"
     />
 
     <!-- Status Bar -->
@@ -2253,37 +1553,30 @@ onMounted(async () => {
       <span>{{ processedFiles.length }} items</span>
       <span v-if="selectedCount > 0" class="ml-4">{{ selectedCount }} selected</span>
       <span v-if="hasActiveFilters" class="ml-4 text-[var(--vf-accent-primary)]">🔍 Filters active</span>
-      <span v-if="isDragging" class="ml-4 text-orange-600">📋 Dragging {{ draggedItems.length }} item(s)...</span>
+      <span v-if="isDragging" class="ml-4 text-orange-600">📋 Dragging {{ draggedItems.length}} item(s)...</span>
       <button
         v-if="hasOperations"
-        @click="showBatchQueue = !showBatchQueue"
+        @click="appUI.showBatchQueue.value = !appUI.showBatchQueue.value"
         class="ml-4 text-[var(--vf-accent-primary)] hover:text-[var(--vf-accent-hover)] cursor-pointer"
       >
         📋 Batch Operations
       </button>
       <span class="ml-auto text-[var(--vf-text-secondary)]">
-        RAM: {{ systemStats.memory_mb.toFixed(1) }} MB
-        <span class="ml-3">CPU: {{ systemStats.cpu_percent.toFixed(1) }}%</span>
+        RAM: {{ appUI.systemStats.value.memory_mb.toFixed(1) }} MB
+        <span class="ml-3">CPU: {{ appUI.systemStats.value.cpu_percent.toFixed(1) }}%</span>
       </span>
     </div>
 
-    <!-- Vault Security Overlay -->
     <VaultOverlay />
-
-    <!-- Dynamic Widget Layer -->
     <WidgetLayer />
-
-    <!-- Widget Selector -->
     <WidgetSelector
       :is-open="showWidgetSelector"
       @close="closeWidgetSelector"
     />
-
-    <!-- Share Dialog -->
     <ShareDialog
-      :is-open="showShareDialog"
-      :share-info="shareInfo"
-      @close="showShareDialog = false"
+      :is-open="appUI.showShareDialog.value"
+      :share-info="appUI.shareInfo.value"
+      @close="appUI.showShareDialog.value = false"
     />
   </div>
 </template>
