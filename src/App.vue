@@ -625,6 +625,36 @@ const handleToggleEditMode = () => {
   editModeEnabled.value = !editModeEnabled.value;
 };
 
+// Steganography Handler
+const handleOpenStego = async () => {
+  try {
+    const path = await invoke<string | null>('vault_select_file');
+    if (path) {
+      showInput(
+        'Open Hidden Vault',
+        'Enter password to unlock hidden vault:',
+        async (password) => {
+          if (password) {
+            try {
+              await vault.openStegoContainer(path, password);
+              success('Vault Opened', `Mounted hidden vault from ${path}`);
+              // Refresh view
+              await handleGlobalRefresh();
+            } catch (err) {
+              error('Failed to open vault', err instanceof Error ? err.message : String(err));
+            }
+          }
+        },
+        '',
+        'Password',
+        'password'
+      );
+    }
+  } catch (err) {
+    console.error('Failed to select file:', err);
+  }
+};
+
 // Bookmark Handlers
 const handleToggleBookmark = async () => {
   const path = await getCurrentDirectoryPath();
@@ -1290,6 +1320,7 @@ onMounted(async () => {
       @toggle-resource-monitor="toggleWidget('resource-monitor')"
       @open-file-colors="() => appUI.openSettings('colors')"
       @open-widgets="openWidgetSelector"
+      @open-stego="handleOpenStego"
     />
 
     <!-- Main Content Area -->
@@ -1412,6 +1443,7 @@ onMounted(async () => {
       :item="contextMenu.item"
       :selected-count="selectedCount"
       :has-clipboard-content="hasClipboardItems"
+      :show-programmer-mode="isProgrammerMode"
       @open="contextMenuHandlers.open"
       @edit="contextMenuHandlers.edit"
       @copy="contextMenuHandlers.copy"
@@ -1439,6 +1471,8 @@ onMounted(async () => {
       @queue-archive="contextMenuHandlers.queueArchive"
       @queue-extract="contextMenuHandlers.queueExtract"
       @share="contextMenuHandlers.share"
+      @hide-to="contextMenuHandlers.hideTo"
+      @extract-hidden="contextMenuHandlers.extractHidden"
       @close="closeContextMenu"
     />
 
@@ -1465,6 +1499,7 @@ onMounted(async () => {
       :label="inputDialog.label"
       :default-value="inputDialog.defaultValue"
       :placeholder="inputDialog.placeholder"
+      :input-type="inputDialog.inputType"
       @confirm="(value) => { inputDialog.onConfirm(value); closeInput(); }"
       @cancel="closeInput"
     />

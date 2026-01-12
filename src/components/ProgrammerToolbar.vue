@@ -11,6 +11,7 @@ interface Emits {
   (e: 'open-file-colors'): void;
   (e: 'toggle-resource-monitor'): void;
   (e: 'open-widgets'): void;
+  (e: 'open-stego'): void;
 }
 
 defineProps<Props>();
@@ -48,6 +49,16 @@ const emit = defineEmits<Emits>();
     >
       <span class="text-[14px]">📝</span>
       <span>Batch Rename</span>
+    </button>
+
+    <!-- Steganography Open Button -->
+    <button
+      @click="emit('open-stego')"
+      class="flex items-center gap-1 px-2 py-1 text-[11px] border rounded bg-[#ECE9D8] border-[#919B9C] hover:bg-[#C1D2EE] hover:border-[#0A246A]"
+      title="Open Hidden Vault from File"
+    >
+      <span class="text-[14px]">🕵️</span>
+      <span>Open from...</span>
     </button>
 
     <!-- FTP Button -->

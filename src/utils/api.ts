@@ -39,3 +39,16 @@ export async function secureInvoke<T>(cmd: string, args?: Record<string, unknown
  * Use this for vault commands themselves to avoid circular logic
  */
 export const invoke = tauriInvoke
+
+// Steganography helpers
+export const vaultCreateStegoContainer = (hostPath: string, outputPath: string, password: string) =>
+  invoke('vault_create_stego_container', { hostPath, outputPath, password })
+
+export const vaultHidePathInContainer = (sourcePath: string, hostPath: string, outputPath: string, password: string) =>
+  invoke('vault_hide_path_in_container', { sourcePath, hostPath, outputPath, password })
+
+export const vaultExtractFromContainer = (containerPath: string, outputPath: string, password: string) =>
+  invoke('vault_extract_from_container', { containerPath, outputPath, password })
+
+export const vaultOpenStegoContainer = (containerPath: string, password: string) =>
+  invoke('vault_open_stego_container', { containerPath, password })

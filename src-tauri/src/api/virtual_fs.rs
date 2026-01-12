@@ -153,7 +153,7 @@ impl VirtualFileSystem {
     }
 
     /// Internal constructor with explicit paths
-    fn new_with_paths(paths: VaultPaths) -> FileSystemResult<Self> {
+    pub fn new_with_paths(paths: VaultPaths) -> FileSystemResult<Self> {
         let persistence_path = paths.fs_json;
         let config_path = paths.vault_meta;
         let data_path = paths.vault_bin;

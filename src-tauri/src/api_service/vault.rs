@@ -217,6 +217,168 @@ impl VaultService {
         }
         Ok(())
     }
+
+    // ==================== STEGANOGRAPHY METHODS ====================
+
+    /// Embeds the current vault into a host file
+    pub fn create_stego_container(
+        &self,
+        host_path: String,
+        output_path: String,
+        password: String,
+    ) -> ApiResult<()> {
+        use crate::api::steganography;
+        use std::path::Path;
+
+        // Get current vault directory
+        let config = APP_CONFIG.read().unwrap();
+        let vault_paths = config.get_vault_paths()
+            .map_err(|e| ApiError::Internal { message: e })?;
+
+        // Validate paths
+        let host = Path::new(&host_path);
+        let output = Path::new(&output_path);
+        let vault_root = &vault_paths.dir;
+
+        if !host.exists() {
+            return Err(ApiError::ValidationError { message: "Host file does not exist".to_string() });
+        }
+
+        // Embed
+        steganography::embed_vault(host, vault_root, output, &password)
+            .map_err(|e| ApiError::Internal { message: e.to_string() })?;
+
+        Ok(())
+    }
+
+    /// Embeds an arbitrary file or directory into a host file
+    pub fn hide_path_in_container(
+        &self,
+        source_path: String,
+        host_path: String,
+        output_path: String,
+        password: String,
+    ) -> ApiResult<()> {
+        use crate::api::steganography;
+        use std::path::Path;
+
+        let source = Path::new(&source_path);
+        let host = Path::new(&host_path);
+        let output = Path::new(&output_path);
+
+        // Basic validation
+        // Note: source path check might depend on whether it's real or virtual.
+        // For now, steganography works on real FS paths mostly because it uses std::fs.
+        // If source_path is virtual, we'd need to extract it first.
+        // Assuming Real FS or extracted Virtual FS content for now.
+        // If the user wants to hide a file FROM the virtual FS, the backend needs to handle reading from VFS.
+        // Since `embed_path` uses std::fs, it only supports Real FS paths.
+        // TODO: Support Virtual FS paths by streaming content from VFS.
+        
+        if !host.exists() {
+             return Err(ApiError::ValidationError { message: "Host file does not exist".to_string() });
+        }
+        
+        if !source.exists() {
+             // Check if it's a VFS path... actually for now, let's enforce Real FS for source
+             return Err(ApiError::ValidationError { message: "Source file does not exist (Real FS only for now)".to_string() });
+        }
+
+        steganography::embed_path(host, source, output, &password)
+             .map_err(|e| ApiError::Internal { message: e.to_string() })?;
+
+        Ok(())
+    }
+
+    /// Extract hidden content from a container file to a specific directory
+    pub fn extract_from_container(
+        &self,
+        container_path: String,
+        output_path: String,
+        password: String,
+    ) -> ApiResult<()> {
+        use crate::api::steganography;
+        use std::path::Path;
+
+        let container = Path::new(&container_path);
+        let output = Path::new(&output_path);
+
+        if !container.exists() {
+            return Err(ApiError::ValidationError { message: "Container file does not exist".to_string() });
+        }
+
+        // Ensure output directory exists
+        if !output.exists() {
+            std::fs::create_dir_all(output)
+                .map_err(|e| ApiError::Internal { message: format!("Failed to create output directory: {}", e) })?;
+        }
+
+        steganography::extract_vault(container, output, &password)
+            .map_err(|e| match e {
+                VaultError::InvalidData => ApiError::ValidationError { message: "Invalid container or wrong password".to_string() },
+                VaultError::DecryptionFailed => ApiError::ValidationError { message: "Wrong password (decryption failed)".to_string() },
+                _ => ApiError::Internal { message: e.to_string() },
+            })?;
+
+        Ok(())
+    }
+
+    /// Open a vault hidden in a container file
+    pub fn open_stego_container(&self, container_path: String, password: String) -> ApiResult<()> {
+        use crate::api::steganography;
+        use std::path::Path;
+        use uuid::Uuid;
+
+        let container = Path::new(&container_path);
+        if !container.exists() {
+            return Err(ApiError::ValidationError { message: "Container file does not exist".to_string() });
+        }
+
+        // Create a unique temp directory for extraction
+        let temp_dir = std::env::temp_dir().join(format!("vfdir_stego_{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&temp_dir)
+            .map_err(|e| ApiError::Internal { message: format!("Failed to create temp dir: {}", e) })?;
+
+        // Extract
+        steganography::extract_vault(container, &temp_dir, &password)
+            .map_err(|e| match e {
+                VaultError::InvalidData => ApiError::ValidationError { message: "Invalid container or wrong password".to_string() },
+                VaultError::DecryptionFailed => ApiError::ValidationError { message: "Wrong password (decryption failed)".to_string() },
+                _ => ApiError::Internal { message: e.to_string() },
+            })?;
+
+        // Configure VaultPaths for this temp location
+        let vault_paths = crate::config::VaultPaths {
+            dir: temp_dir.clone(),
+            fs_json: temp_dir.join("fs.json"),
+            vault_meta: temp_dir.join("vault.meta"),
+            vault_bin: temp_dir.join("vault.bin"),
+        };
+
+        // Initialize VFS with these paths
+        let vfs = VirtualFileSystem::new_with_paths(vault_paths)
+            .map_err(|e| ApiError::Internal { message: e.to_string() })?;
+
+        // Unlock the inner vault using the same password
+        // Note: The inner vault might have a different password, but for better UX in steganography mode,
+        // we assume the user uses the same password or we prompt again if this fails.
+        // For now, we try to unlock.
+        if let Err(e) = vfs.unlock_vault(&password) {
+            tracing::warn!("Failed to auto-unlock inner vault: {}. User might need to enter password again.", e);
+            // We still proceed, but the vault will be in LOCKED state.
+            // The user will see the login screen.
+        }
+
+        // Replace global VFS
+        let mut vfs_guard = VAULT_FS.lock().unwrap();
+        *vfs_guard = Some(vfs);
+
+        // Update config to reflect we are in a "custom" mode (though not persisted to disk as the main config)
+        // Actually, we don't update APP_CONFIG because we don't want to persist this temp path.
+        // The VFS instance is swapped in memory, which is what matters for the current session.
+        
+        Ok(())
+    }
 }
 
 impl Default for VaultService {

@@ -7,6 +7,7 @@ interface Props {
   label: string;
   defaultValue?: string;
   placeholder?: string;
+  inputType?: string;
 }
 
 interface Emits {
@@ -17,6 +18,7 @@ interface Emits {
 const props = withDefaults(defineProps<Props>(), {
   defaultValue: '',
   placeholder: '',
+  inputType: 'text',
 });
 
 const emit = defineEmits<Emits>();
@@ -83,7 +85,7 @@ const handleKeydown = (event: KeyboardEvent) => {
         <input
           ref="inputRef"
           v-model="inputValue"
-          type="text"
+          :type="inputType"
           :placeholder="placeholder"
           @keydown="handleKeydown"
           class="w-full px-2 py-1 text-[11px] border border-[var(--vf-border-accent)] focus:outline-none focus:border-[var(--vf-accent-hover)]"

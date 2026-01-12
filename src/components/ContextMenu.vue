@@ -7,6 +7,7 @@ interface Props {
   item: FileItem | null;
   selectedCount?: number;
   hasClipboardContent?: boolean;
+  showProgrammerMode?: boolean;
 }
 
 interface Emits {
@@ -37,12 +38,15 @@ interface Emits {
   (e: 'queueArchive'): void;
   (e: 'queueExtract'): void;
   (e: 'share'): void;
+  (e: 'hideTo'): void;
+  (e: 'extractHidden'): void;
   (e: 'close'): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
   selectedCount: 0,
   hasClipboardContent: false,
+  showProgrammerMode: false,
 });
 const emit = defineEmits<Emits>();
 
@@ -67,6 +71,26 @@ const handleAction = (action: keyof Emits) => {
         <span class="w-4">📂</span>
         <span class="flex-1">Open</span>
         <span class="text-[9px] text-gray-400">Enter</span>
+      </div>
+
+      <!-- Hide to... (Programmer Mode) -->
+      <div
+        v-if="showProgrammerMode"
+        @click="handleAction('hideTo')"
+        class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2 text-purple-700 font-medium"
+      >
+        <span class="w-4">🕵️</span>
+        <span class="flex-1">Hide to...</span>
+      </div>
+
+      <!-- Extract Hidden (Programmer Mode) -->
+      <div
+        v-if="showProgrammerMode && item.type !== 'folder'"
+        @click="handleAction('extractHidden')"
+        class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2 text-purple-700 font-medium"
+      >
+        <span class="w-4">🔓</span>
+        <span class="flex-1">Extract Hidden Data</span>
       </div>
 
       <!-- Edit (only for text/code files) -->

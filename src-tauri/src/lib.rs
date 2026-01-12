@@ -121,10 +121,17 @@ pub fn run() {
             vault_get_recovery_channels,
             vault_is_recovery_configured,
             vault_reset,
+            // Steganography commands
+            vault_create_stego_container,
+            vault_hide_path_in_container,
+            vault_extract_from_container,
+            vault_open_stego_container,
             // Vault directory management commands
             vault_get_current_directory,
             vault_get_default_directory,
             vault_select_directory,
+            vault_select_file,
+            vault_save_file_dialog,
             vault_set_custom_directory,
             vault_reset_to_default_directory,
             // Queue management commands

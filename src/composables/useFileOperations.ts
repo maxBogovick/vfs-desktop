@@ -302,7 +302,7 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
   const handleRename = (
     selectedItems: FileItem[],
     currentPath: string[],
-    showInput: (title: string, label: string, onConfirm: (value: string) => void, defaultValue?: string, placeholder?: string) => void,
+    showInput: (title: string, label: string, onConfirm: (value: string) => void, defaultValue?: string, placeholder?: string, inputType?: string) => void,
     panelFs?: string
   ) => {
     if (selectedItems.length !== 1) {
@@ -332,14 +332,15 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
         }
       },
       item.name,
-      'New name'
+      'New name',
+      'text'
     );
   };
 
   // Create new folder
   const handleNewFolder = (
     currentPath: string[],
-    showInput: (title: string, label: string, onConfirm: (value: string) => void, defaultValue?: string, placeholder?: string) => void,
+    showInput: (title: string, label: string, onConfirm: (value: string) => void, defaultValue?: string, placeholder?: string, inputType?: string) => void,
     panelFs?: string
   ) => {
     showInput(
@@ -361,7 +362,8 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
         }
       },
       '',
-      'New Folder'
+      'New Folder',
+      'text'
     );
   };
 

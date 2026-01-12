@@ -788,6 +788,48 @@ pub fn vault_reset() -> Result<(), String> {
     API.vault.reset().map_err(|e| e.to_string())
 }
 
+// ====== Steganography Commands ======
+
+#[tauri::command]
+pub fn vault_create_stego_container(
+    host_path: String,
+    output_path: String,
+    password: String,
+) -> Result<(), String> {
+    API.vault.create_stego_container(host_path, output_path, password)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_hide_path_in_container(
+    source_path: String,
+    host_path: String,
+    output_path: String,
+    password: String,
+) -> Result<(), String> {
+    API.vault.hide_path_in_container(source_path, host_path, output_path, password)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_extract_from_container(
+    container_path: String,
+    output_path: String,
+    password: String,
+) -> Result<(), String> {
+    API.vault.extract_from_container(container_path, output_path, password)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_open_stego_container(
+    container_path: String,
+    password: String,
+) -> Result<(), String> {
+    API.vault.open_stego_container(container_path, password)
+        .map_err(|e| e.to_string())
+}
+
 // ====== Vault Directory Management Commands ======
 
 #[tauri::command]
@@ -811,6 +853,26 @@ pub async fn vault_select_directory() -> Result<Option<String>, String> {
         .await;
 
     Ok(folder.map(|f| f.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub async fn vault_select_file() -> Result<Option<String>, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_title("Select File")
+        .pick_file()
+        .await;
+
+    Ok(file.map(|f| f.path().to_string_lossy().to_string()))
+}
+
+#[tauri::command]
+pub async fn vault_save_file_dialog() -> Result<Option<String>, String> {
+    let file = rfd::AsyncFileDialog::new()
+        .set_title("Save File")
+        .save_file()
+        .await;
+
+    Ok(file.map(|f| f.path().to_string_lossy().to_string()))
 }
 
 #[tauri::command]

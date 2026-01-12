@@ -18,7 +18,12 @@ const error = ref<string | null>(null)
 const isSetupMode = computed(() => vault.status.value === VaultStatus.UNINITIALIZED)
 const isLoginMode = computed(() => vault.status.value === VaultStatus.LOCKED)
 
+// Steganography State
+const stegoPath = ref<string | null>(null)
+const isStegoMode = computed(() => !!stegoPath.value)
+
 const title = computed(() => {
+  if (isStegoMode.value) return '🕵️ Unlock Hidden Vault'
   if (isSetupMode.value) return '🔒 Secure Vault Setup'
   if (isLoginMode.value) return '🔐 Unlock Vault'
   return '⏳ Loading...'
@@ -36,6 +41,24 @@ const canSubmit = computed(() => {
   return true
 })
 
+async function selectStegoFile() {
+  try {
+    const path = await invoke<string | null>('vault_select_file')
+    if (path) {
+      stegoPath.value = path
+      error.value = null
+    }
+  } catch (err) {
+    console.error('Failed to select file:', err)
+  }
+}
+
+function cancelStegoMode() {
+  stegoPath.value = null
+  password.value = ''
+  error.value = null
+}
+
 async function handleSubmit() {
   if (!canSubmit.value) return
 
@@ -43,7 +66,13 @@ async function handleSubmit() {
   error.value = null
 
   try {
-    if (isSetupMode.value) {
+    if (isStegoMode.value && stegoPath.value) {
+      // Open Steganography Container
+      await vault.openStegoContainer(stegoPath.value, password.value)
+      // Success - clear form
+      password.value = ''
+      stegoPath.value = null
+    } else if (isSetupMode.value) {
       // Setup new vault
       if (!passwordsMatch.value) {
         error.value = 'Passwords do not match'
@@ -159,7 +188,10 @@ watch(() => vault.status.value, () => {
           <div class="p-6 space-y-4">
           <!-- Description -->
           <div class="text-sm text-[var(--vf-text-secondary)]">
-            <p v-if="isSetupMode">
+            <p v-if="isStegoMode">
+              Enter the password to extract and unlock the hidden vault from <span class="font-mono bg-[var(--vf-bg-secondary)] px-1 rounded">{{ stegoPath }}</span>
+            </p>
+            <p v-else-if="isSetupMode">
               Create a master password to secure your virtual file system. This password will be required every time you start the application.
             </p>
             <p v-else-if="isLoginMode">
@@ -174,7 +206,7 @@ watch(() => vault.status.value, () => {
           <div v-if="!vault.isChecking.value" class="space-y-3">
             <div>
               <label class="block text-xs font-medium text-[var(--vf-text-secondary)] mb-1">
-                Master Password
+                {{ isStegoMode ? 'Hidden Vault Password' : 'Master Password' }}
               </label>
               <input
                 v-model="password"
@@ -212,7 +244,7 @@ watch(() => vault.status.value, () => {
             </div>
 
             <!-- Forgot Password Link (Login mode only, if recovery configured) -->
-            <div v-if="isLoginMode" class="text-center">
+            <div v-if="isLoginMode && !isStegoMode" class="text-center">
               <button
                 @click="showRecovery = true"
                 class="text-xs text-[var(--vf-accent-primary)] hover:text-[var(--vf-accent-hover)] hover:underline transition-colors"
@@ -234,14 +266,33 @@ watch(() => vault.status.value, () => {
         </div>
 
           <!-- Actions -->
-          <div v-if="!vault.isChecking.value" class="flex justify-end gap-2 px-6 pb-6">
-            <button
-              @click="handleSubmit"
-              :disabled="!canSubmit"
-              class="px-4 py-2 bg-[var(--vf-accent-primary)] hover:bg-[var(--vf-accent-hover)] text-white text-sm font-medium rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {{ isSubmitting ? 'Processing...' : isSetupMode ? 'Create Vault' : 'Unlock' }}
-            </button>
+          <div v-if="!vault.isChecking.value" class="flex flex-col gap-2 px-6 pb-6">
+            <div class="flex justify-end gap-2">
+              <button
+                v-if="isStegoMode"
+                @click="cancelStegoMode"
+                class="px-4 py-2 bg-[var(--vf-bg-secondary)] border border-[var(--vf-border)] hover:bg-[var(--vf-bg-hover)] text-[var(--vf-text-primary)] text-sm font-medium rounded transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                @click="handleSubmit"
+                :disabled="!canSubmit"
+                class="px-4 py-2 bg-[var(--vf-accent-primary)] hover:bg-[var(--vf-accent-hover)] text-white text-sm font-medium rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {{ isSubmitting ? 'Processing...' : isStegoMode ? 'Open Hidden Vault' : isSetupMode ? 'Create Vault' : 'Unlock' }}
+              </button>
+            </div>
+            
+            <!-- Steganography Entry Point -->
+            <div v-if="isLoginMode && !isStegoMode" class="mt-2 pt-3 border-t border-[var(--vf-border)] flex justify-center">
+              <button
+                @click="selectStegoFile"
+                class="text-xs flex items-center gap-1 text-[var(--vf-text-secondary)] hover:text-[var(--vf-text-primary)] transition-colors"
+              >
+                🕵️ Open Hidden Vault from File...
+              </button>
+            </div>
           </div>
         </div>
         <!-- End Normal Vault Setup/Login -->

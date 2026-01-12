@@ -1,5 +1,6 @@
 import { ref, computed } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
+import { vaultCreateStegoContainer, vaultOpenStegoContainer } from '../utils/api'
 
 export enum VaultStatus {
   UNINITIALIZED = 'UNINITIALIZED',
@@ -119,6 +120,15 @@ export function useVault() {
     isVaultOverlayVisible.value = true
   }
 
+  async function createStegoContainer(hostPath: string, outputPath: string, password: string): Promise<void> {
+    await vaultCreateStegoContainer(hostPath, outputPath, password)
+  }
+
+  async function openStegoContainer(containerPath: string, password: string): Promise<void> {
+    await vaultOpenStegoContainer(containerPath, password)
+    await checkStatus()
+  }
+
   return {
     // State
     status: computed(() => status.value),
@@ -139,5 +149,7 @@ export function useVault() {
     unlock,
     lock,
     forceLock,
+    createStegoContainer,
+    openStegoContainer,
   }
 }

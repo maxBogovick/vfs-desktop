@@ -27,6 +27,7 @@ const inputDialog = ref<{
   label: string;
   defaultValue: string;
   placeholder: string;
+  inputType: string;
   onConfirm: (value: string) => void;
 }>({
   isOpen: false,
@@ -34,6 +35,7 @@ const inputDialog = ref<{
   label: '',
   defaultValue: '',
   placeholder: '',
+  inputType: 'text',
   onConfirm: () => {},
 });
 
@@ -73,7 +75,8 @@ export function useDialogs() {
     label: string,
     onConfirm: (value: string) => void,
     defaultValue = '',
-    placeholder = ''
+    placeholder = '',
+    inputType = 'text'
   ) => {
     inputDialog.value = {
       isOpen: true,
@@ -81,6 +84,7 @@ export function useDialogs() {
       label,
       defaultValue,
       placeholder,
+      inputType,
       onConfirm,
     };
   };

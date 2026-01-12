@@ -242,6 +242,34 @@ const resetToDefaultVaultDirectory = async () => {
   }
 }
 
+const createStegoVault = async () => {
+  try {
+    // 1. Select Host File
+    const hostPath = await invoke<string | null>('vault_select_file')
+    if (!hostPath) return
+
+    // 2. Select Output File
+    const outputPath = await invoke<string | null>('vault_save_file_dialog')
+    if (!outputPath) return
+
+    // 3. Prompt for Password
+    const password = prompt('Enter a password to encrypt the hidden vault container:')
+    if (!password) return
+
+    vaultActionInProgress.value = true
+    
+    // 4. Create Container
+    await vault.createStegoContainer(hostPath, outputPath, password)
+    
+    showMessage(`Vault successfully hidden in: ${outputPath}`, 'success')
+  } catch (error) {
+    console.error('Steganography error:', error)
+    showMessage(`Failed to create hidden vault: ${error}`, 'error')
+  } finally {
+    vaultActionInProgress.value = false
+  }
+}
+
 // Отменить изменения
 const cancel = () => {
   emit('close')
@@ -406,6 +434,21 @@ const getThemeDescription = (theme: string): string => {
 
             <div class="text-xs text-gray-500 dark:text-gray-400 mt-2">
               Change where vault files are stored. Data can be automatically migrated to the new location.
+            </div>
+
+            <!-- Steganography Tool -->
+            <div class="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+              <label class="setting-label font-semibold">Steganography Tool:</label>
+              <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Hide your entire vault inside a video or image file. The file will still play/view normally.
+              </div>
+              <button
+                @click="createStegoVault"
+                :disabled="vaultActionInProgress"
+                class="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              >
+                🕵️ Hide Vault in File...
+              </button>
             </div>
           </div>
 

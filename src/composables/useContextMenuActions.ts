@@ -415,6 +415,91 @@ export function useContextMenuActions(params: ContextMenuActionsParams) {
         error('Share failed', err instanceof Error ? err.message : String(err));
       }
     },
+
+    hideTo: async () => {
+      if (!contextMenu.value?.item) return;
+      const item = contextMenu.value.item;
+
+      try {
+        // 1. Select Host File (Container)
+        // We use vault_select_file to pick an existing media file
+        const hostPath = await invoke<string | null>('vault_select_file');
+        if (!hostPath) return;
+
+        // 2. Select Output File
+        // Where to save the resulting stego-file
+        const outputPath = await invoke<string | null>('vault_save_file_dialog');
+        if (!outputPath) return;
+
+        // 3. Prompt for Password
+        showInput(
+          'Encrypt Hidden Data',
+          'Enter password to encrypt the hidden data:',
+          async (password) => {
+            if (!password) return;
+
+            try {
+              // 4. Execute Backend Command
+              await invoke('vault_hide_path_in_container', {
+                sourcePath: item.path,
+                hostPath: hostPath,
+                outputPath: outputPath,
+                password: password
+              });
+
+              success('Steganography Success', `Hidden '${item.name}' inside '${outputPath}'`);
+            } catch (err) {
+              error('Failed to hide file', err instanceof Error ? err.message : String(err));
+            }
+          },
+          '',
+          'Password',
+          'password'
+        );
+      } catch (err) {
+        error('Failed to hide file', err instanceof Error ? err.message : String(err));
+      }
+    },
+
+    extractHidden: async () => {
+      if (!contextMenu.value?.item) return;
+      const item = contextMenu.value.item;
+
+      // Determine output directory: current_dir/filename_extracted
+      const currentDir = getCurrentDirPath();
+      const outputDirName = `${item.name}_extracted`;
+      const outputPath = currentDir.endsWith('/') ? `${currentDir}${outputDirName}` : `${currentDir}/${outputDirName}`;
+
+      showInput(
+        'Extract Hidden Data',
+        'Enter password to decrypt:',
+        async (password) => {
+          if (!password) return;
+
+          try {
+            await invoke('vault_extract_from_container', {
+              containerPath: item.path,
+              outputPath: outputPath,
+              password: password
+            });
+
+            success('Extraction Success', `Extracted to '${outputDirName}'`);
+            
+            // Refresh view to show new folder
+            if (params.isDualMode()) {
+              params.getActivePanelMethods()?.handleRefresh();
+            } else {
+              await params.refreshCurrentDirectory();
+            }
+          } catch (err) {
+            error('Failed to extract', err instanceof Error ? err.message : String(err));
+          }
+        },
+        '',
+        'Password',
+        'password'
+      );
+    },
   };
 
   return handlers;
