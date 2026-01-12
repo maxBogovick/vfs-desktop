@@ -1108,11 +1108,10 @@ onMounted(async () => {
   // Listen for filesystem backend changes
   window.addEventListener('fs-config-changed', async () => {
     try {
-      const config = await invoke<any>('get_config');
-      const isVirtualFS = config.filesystem_backend === 'virtual';
-      console.log('[App] 🔄 FS Config changed. New backend:', isVirtualFS ? 'virtual' : 'real');
+      console.log('[App] 🔄 FS Config changed, reloading backend...');
 
-      appUI.currentFilesystemBackend.value = isVirtualFS ? 'virtual' : 'real';
+      // Reload filesystem backend from config
+      await appUI.loadFilesystemBackend();
       await vault.checkStatus();
 
       const home = await getHomeDirectory(appUI.currentFilesystemBackend.value);
@@ -1172,13 +1171,11 @@ onMounted(async () => {
     }
   }
 
+  // Load filesystem backend from config FIRST
+  await appUI.loadFilesystemBackend();
+
   // Restore tabs for single mode
   if (!isDualMode.value) {
-    const config = await invoke<any>('get_config');
-    const isVirtualFS = config.filesystem_backend === 'virtual';
-    console.log("is vfs = ", isVirtualFS);
-
-    appUI.currentFilesystemBackend.value = isVirtualFS ? 'virtual' : 'real';
 
     if (uiState && uiState.tabs && uiState.tabs.length > 0) {
       console.log('[App] ✅ Restoring', uiState.tabs.length, 'tabs');

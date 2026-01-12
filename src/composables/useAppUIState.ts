@@ -1,4 +1,5 @@
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
 import type { FileItem, ViewMode } from '../types';
 
 /**
@@ -115,6 +116,30 @@ export function useAppUIState() {
     systemStats.value = stats;
   };
 
+  // Auto-save filesystem backend changes to config
+  watch(currentFilesystemBackend, async (newBackend) => {
+    try {
+      const config = await invoke<any>('get_config');
+      config.filesystem_backend = newBackend;
+      await invoke('save_config', { config });
+      console.log('[useAppUIState] Saved filesystem backend:', newBackend);
+    } catch (error) {
+      console.error('[useAppUIState] Failed to save filesystem backend:', error);
+    }
+  });
+
+  // Load initial filesystem backend from config
+  const loadFilesystemBackend = async () => {
+    try {
+      const config = await invoke<any>('get_config');
+      const isVirtualFS = config.filesystem_backend === 'virtual';
+      currentFilesystemBackend.value = isVirtualFS ? 'virtual' : 'real';
+      console.log('[useAppUIState] Loaded filesystem backend:', currentFilesystemBackend.value);
+    } catch (error) {
+      console.error('[useAppUIState] Failed to load filesystem backend:', error);
+    }
+  };
+
   return {
     // View state
     viewMode,
@@ -171,5 +196,6 @@ export function useAppUIState() {
     closeInlineCreator,
     toggleOperationsQueue,
     updateSystemStats,
+    loadFilesystemBackend,
   };
 }
