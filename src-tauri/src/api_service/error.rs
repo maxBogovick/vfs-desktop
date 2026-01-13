@@ -37,6 +37,12 @@ pub enum ApiError {
 
     #[error("Internal error: {message}")]
     Internal { message: String },
+
+    #[error("System error: {0}")]
+    System(String),
+
+    #[error("Validation error: {0}")]
+    Validation(String),
 }
 
 impl ApiError {
@@ -52,6 +58,8 @@ impl ApiError {
             ApiError::NotFound { .. } => "NOT_FOUND",
             ApiError::AlreadyExists { .. } => "ALREADY_EXISTS",
             ApiError::Internal { .. } => "INTERNAL_ERROR",
+            ApiError::System(_) => "SYSTEM_ERROR",
+            ApiError::Validation(_) => "VALIDATION_ERROR",
         }
     }
 

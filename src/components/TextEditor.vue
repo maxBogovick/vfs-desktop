@@ -71,6 +71,10 @@ watch(() => props.isOpen, async (isOpen) => {
 
 const handleSave = () => {
   emit('save', fileContent.value);
+  // Reset changes tracking after save
+  originalContent.value = fileContent.value;
+  hasChanges.value = false;
+  emit('close');
 };
 
 const handleClose = () => {

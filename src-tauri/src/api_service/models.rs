@@ -117,3 +117,12 @@ pub struct DirectorySize {
     pub total_bytes: u64,
     pub total_items: u64,
 }
+
+/// Command Execution Result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandResult {
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: i32,
+    pub success: bool,
+}

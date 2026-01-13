@@ -5,7 +5,7 @@
  */
 
 use super::{ApiResult, ApiError};
-use super::models::{BatchRenameRequest, BatchRenameResult, BatchAttributeRequest};
+use super::models::{BatchRenameRequest, BatchRenameResult, BatchAttributeRequest, PermissionsChange, DateChange, TagsChange};
 use crate::progress::{OPERATIONS_MANAGER, ProgressEvent, OperationType, OperationStatus};
 use serde::{Serialize, Deserialize};
 
@@ -31,6 +31,150 @@ impl BatchService {
     pub fn new() -> Self {
         tracing::debug!("Initializing BatchService");
         Self {}
+    }
+
+    /// Change file attributes (permissions, dates, tags)
+    pub fn change_attributes(
+        &self,
+        path: &str,
+        permissions: Option<PermissionsChange>,
+        dates: Option<DateChange>,
+        tags: Option<TagsChange>,
+    ) -> ApiResult<()> {
+        use std::fs;
+        use std::path::Path;
+
+        let file_path = Path::new(path);
+
+        // Change permissions
+        #[cfg(unix)]
+        if let Some(perms) = permissions {
+            use std::os::unix::fs::PermissionsExt;
+
+            let metadata = fs::metadata(file_path)
+                .map_err(|e| ApiError::from(e))?;
+
+            let mut mode = metadata.permissions().mode();
+
+            // Update permission bits
+            if let Some(readable) = perms.readable {
+                if readable {
+                    mode |= 0o444; // r--r--r--
+                } else {
+                    mode &= !0o444;
+                }
+            }
+
+            if let Some(writable) = perms.writable {
+                if writable {
+                    mode |= 0o222; // -w--w--w-
+                } else {
+                    mode &= !0o222;
+                }
+            }
+
+            if let Some(executable) = perms.executable {
+                if executable {
+                    mode |= 0o111; // --x--x--x
+                } else {
+                    mode &= !0o111;
+                }
+            }
+
+            let new_permissions = fs::Permissions::from_mode(mode);
+            fs::set_permissions(file_path, new_permissions)
+                .map_err(|e| ApiError::from(e))?;
+        }
+
+        // Change dates
+        if let Some(date_changes) = dates {
+            use filetime::{set_file_times, FileTime};
+
+            let metadata = fs::metadata(file_path)
+                .map_err(|e| ApiError::from(e))?;
+
+            let current_accessed = FileTime::from_last_access_time(&metadata);
+            let current_modified = FileTime::from_last_modification_time(&metadata);
+
+            let new_accessed = if let Some(accessed) = date_changes.accessed {
+                FileTime::from_unix_time(accessed as i64, 0)
+            } else {
+                current_accessed
+            };
+
+            let new_modified = if let Some(modified) = date_changes.modified {
+                FileTime::from_unix_time(modified as i64, 0)
+            } else {
+                current_modified
+            };
+
+            set_file_times(file_path, new_accessed, new_modified)
+                .map_err(|e| ApiError::from(e))?;
+        }
+
+        // Change tags (macOS extended attributes or custom metadata)
+        #[cfg(target_os = "macos")]
+        if let Some(tags_change) = tags {
+            use std::process::Command;
+
+            let tags_str = tags_change.tags.join(",");
+
+            match tags_change.operation.as_str() {
+                "add" | "replace" => {
+                    // Use xattr command to set tags
+                    Command::new("xattr")
+                        .args([
+                            "-w",
+                            "com.apple.metadata:_kMDItemUserTags",
+                            &tags_str,
+                            path,
+                        ])
+                        .output()
+                        .map_err(|e| ApiError::System(format!("Failed to set tags: {}", e)))?;
+                }
+                "remove" => {
+                    // Remove tags attribute
+                    Command::new("xattr")
+                        .args(["-d", "com.apple.metadata:_kMDItemUserTags", path])
+                        .output()
+                        .ok(); // Ignore errors if attribute doesn't exist
+                }
+                _ => return Err(ApiError::Validation("Invalid tag operation".to_string())),
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Validate batch rename operation
+    pub fn validate_rename(&self, new_names: &[String]) -> ApiResult<Vec<String>> {
+        use std::collections::HashSet;
+
+        let mut errors = Vec::new();
+        let mut seen_names = HashSet::new();
+
+        for name in new_names {
+            // Check for empty names
+            if name.trim().is_empty() {
+                errors.push(format!("Empty filename is not allowed"));
+                continue;
+            }
+
+            // Check for illegal characters
+            let illegal_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
+            if name.chars().any(|c| illegal_chars.contains(&c)) {
+                errors.push(format!("Filename '{}' contains illegal characters", name));
+            }
+
+            // Check for duplicate names
+            let lower_name = name.to_lowercase();
+            if seen_names.contains(&lower_name) {
+                errors.push(format!("Duplicate filename: '{}'", name));
+            }
+            seen_names.insert(lower_name);
+        }
+
+        Ok(errors)
     }
 
     /// Preview batch rename operation without executing

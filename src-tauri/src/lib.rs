@@ -126,6 +126,7 @@ pub fn run() {
             vault_hide_path_in_container,
             vault_extract_from_container,
             vault_open_stego_container,
+            vault_save_stego_container,
             // Vault directory management commands
             vault_get_current_directory,
             vault_get_default_directory,

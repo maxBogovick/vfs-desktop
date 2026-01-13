@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue';
+import { ref, computed, watch, onMounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 
 // Components
@@ -31,6 +31,7 @@ import VaultOverlay from './components/VaultOverlay.vue';
 import WidgetLayer from './components/WidgetLayer.vue';
 import WidgetSelector from './components/WidgetSelector.vue';
 import ShareDialog from './components/ShareDialog.vue';
+import StegoVaultModal from './components/StegoVaultModal.vue';
 
 // Composables - Core
 import { useFileSystem } from './composables/useFileSystem';
@@ -250,6 +251,12 @@ const appUI = useAppUIState();
 // Editor State
 const editor = useEditorState();
 
+const stegoModal = ref({
+  isOpen: false,
+  sessionId: '',
+  title: '',
+});
+
 // ============================================================================
 // HELPERS
 // ============================================================================
@@ -261,7 +268,7 @@ const getCurrentDirectoryPath = async (): Promise<string> => {
     pathString = '/' + pathString;
   }
   if (!pathString) {
-    return await getHomeDirectory();
+    return await getHomeDirectory(appUI.currentFilesystemBackend.value);
   }
   return pathString;
 };
@@ -636,10 +643,16 @@ const handleOpenStego = async () => {
         async (password) => {
           if (password) {
             try {
-              await vault.openStegoContainer(path, password);
-              success('Vault Opened', `Mounted hidden vault from ${path}`);
-              // Refresh view
-              await handleGlobalRefresh();
+              const sessionId = await vault.openStegoContainer(path, password);
+
+              // Open modal with session ID
+              stegoModal.value = {
+                isOpen: true,
+                sessionId: sessionId,
+                title: `Hidden Vault: ${path.split('/').pop()}`,
+              };
+              
+              success('Vault Opened', `Mounted hidden vault`);
             } catch (err) {
               error('Failed to open vault', err instanceof Error ? err.message : String(err));
             }
@@ -1609,6 +1622,12 @@ onMounted(async () => {
       :is-open="appUI.showShareDialog.value"
       :share-info="appUI.shareInfo.value"
       @close="appUI.showShareDialog.value = false"
+    />
+    <StegoVaultModal
+      :is-open="stegoModal.isOpen"
+      :session-id="stegoModal.sessionId"
+      :title="stegoModal.title"
+      @close="stegoModal.isOpen = false"
     />
   </div>
 </template>

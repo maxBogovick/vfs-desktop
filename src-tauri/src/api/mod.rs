@@ -9,3 +9,4 @@ pub mod share;
 
 pub use real_fs::RealFileSystem;
 pub mod steganography;
+pub mod temporary_fs;

@@ -160,62 +160,15 @@ pub fn open_terminal(path: String) -> Result<(), String> {
 
 // ====== Команды для работы с терминалом ======
 
-#[derive(Serialize)]
-pub struct CommandResult {
-    pub stdout: String,
-    pub stderr: String,
-    pub exit_code: i32,
-    pub success: bool,
-}
+use crate::api_service::models::CommandResult;
 
 #[tauri::command]
 pub fn execute_command(
     command: String,
     working_dir: String,
 ) -> Result<CommandResult, String> {
-    use std::process::{Command, Stdio};
-    use std::time::Duration;
-    use wait_timeout::ChildExt;
-
-    // Spawn the process
-    let mut child = Command::new("sh")
-        .arg("-c")
-        .arg(&command)
-        .current_dir(&working_dir)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Failed to start command: {}", e))?;
-
-    // Wait with 30 second timeout
-    let timeout = Duration::from_secs(30);
-    match child.wait_timeout(timeout)
-        .map_err(|e| format!("Failed to wait for command: {}", e))? {
-        Some(_status) => {
-            // Process finished within timeout, get output
-            let output = child.wait_with_output()
-                .map_err(|e| format!("Failed to get command output: {}", e))?;
-
-            Ok(CommandResult {
-                stdout: String::from_utf8_lossy(&output.stdout).to_string(),
-                stderr: String::from_utf8_lossy(&output.stderr).to_string(),
-                exit_code: output.status.code().unwrap_or(-1),
-                success: output.status.success(),
-            })
-        }
-        None => {
-            // Timeout expired, kill the process
-            let _ = child.kill();
-            let _ = child.wait(); // Reap the zombie process
-
-            Ok(CommandResult {
-                stdout: String::new(),
-                stderr: "Command timed out after 30 seconds. Long-running commands are not supported.".to_string(),
-                exit_code: -1,
-                success: false,
-            })
-        }
-    }
+    API.system.execute_shell_command(&command, &working_dir)
+        .map_err(|e| e.to_string())
 }
 
 // ====== Команды для работы с закладками ======
@@ -550,28 +503,7 @@ pub fn copy_file_with_custom_name(
 
 // ====== Batch Operations Commands ======
 
-use serde::Deserialize;
-
-#[derive(Debug, Deserialize)]
-pub struct PermissionsChange {
-    pub readable: Option<bool>,
-    pub writable: Option<bool>,
-    pub executable: Option<bool>,
-    pub recursive: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct DateChange {
-    pub modified: Option<u64>,
-    pub created: Option<u64>,
-    pub accessed: Option<u64>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct TagsChange {
-    pub operation: String, // "add", "remove", "replace"
-    pub tags: Vec<String>,
-}
+use crate::api_service::models::{PermissionsChange, DateChange, TagsChange};
 
 /// Change file attributes (permissions, dates, tags)
 #[tauri::command]
@@ -581,145 +513,15 @@ pub fn batch_change_attributes(
     dates: Option<DateChange>,
     tags: Option<TagsChange>,
 ) -> Result<(), String> {
-    use std::fs;
-    use std::path::Path;
-
-    let file_path = Path::new(&path);
-
-    // Change permissions
-    #[cfg(unix)]
-    if let Some(perms) = permissions {
-        use std::os::unix::fs::PermissionsExt;
-
-        let metadata = fs::metadata(file_path)
-            .map_err(|e| format!("Failed to read metadata: {}", e))?;
-
-        let mut mode = metadata.permissions().mode();
-
-        // Update permission bits
-        if let Some(readable) = perms.readable {
-            if readable {
-                mode |= 0o444; // r--r--r--
-            } else {
-                mode &= !0o444;
-            }
-        }
-
-        if let Some(writable) = perms.writable {
-            if writable {
-                mode |= 0o222; // -w--w--w-
-            } else {
-                mode &= !0o222;
-            }
-        }
-
-        if let Some(executable) = perms.executable {
-            if executable {
-                mode |= 0o111; // --x--x--x
-            } else {
-                mode &= !0o111;
-            }
-        }
-
-        let new_permissions = fs::Permissions::from_mode(mode);
-        fs::set_permissions(file_path, new_permissions)
-            .map_err(|e| format!("Failed to set permissions: {}", e))?;
-    }
-
-    // Change dates
-    if let Some(date_changes) = dates {
-        use filetime::{set_file_times, FileTime};
-
-        let metadata = fs::metadata(file_path)
-            .map_err(|e| format!("Failed to read metadata: {}", e))?;
-
-        let current_accessed = FileTime::from_last_access_time(&metadata);
-        let current_modified = FileTime::from_last_modification_time(&metadata);
-
-        let new_accessed = if let Some(accessed) = date_changes.accessed {
-            FileTime::from_unix_time(accessed as i64, 0)
-        } else {
-            current_accessed
-        };
-
-        let new_modified = if let Some(modified) = date_changes.modified {
-            FileTime::from_unix_time(modified as i64, 0)
-        } else {
-            current_modified
-        };
-
-        set_file_times(file_path, new_accessed, new_modified)
-            .map_err(|e| format!("Failed to set file times: {}", e))?;
-    }
-
-    // Change tags (macOS extended attributes or custom metadata)
-    #[cfg(target_os = "macos")]
-    if let Some(tags_change) = tags {
-        use std::process::Command;
-
-        let tags_str = tags_change.tags.join(",");
-
-        match tags_change.operation.as_str() {
-            "add" | "replace" => {
-                // Use xattr command to set tags
-                Command::new("xattr")
-                    .args([
-                        "-w",
-                        "com.apple.metadata:_kMDItemUserTags",
-                        &tags_str,
-                        &path,
-                    ])
-                    .output()
-                    .map_err(|e| format!("Failed to set tags: {}", e))?;
-            }
-            "remove" => {
-                // Remove tags attribute
-                Command::new("xattr")
-                    .args(["-d", "com.apple.metadata:_kMDItemUserTags", &path])
-                    .output()
-                    .ok(); // Ignore errors if attribute doesn't exist
-            }
-            _ => return Err("Invalid tag operation".to_string()),
-        }
-    }
-
-    Ok(())
+    API.batch.change_attributes(&path, permissions, dates, tags)
+        .map_err(|e| e.to_string())
 }
 
 /// Validate batch rename operation
 #[tauri::command]
 pub fn validate_batch_rename(new_names: Vec<String>) -> Result<Vec<String>, String> {
-    use std::collections::HashSet;
-
-    let mut errors = Vec::new();
-    let mut seen_names = HashSet::new();
-
-    for name in &new_names {
-        // Check for empty names
-        if name.trim().is_empty() {
-            errors.push(format!("Empty filename is not allowed"));
-            continue;
-        }
-
-        // Check for illegal characters
-        let illegal_chars = ['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
-        if name.chars().any(|c| illegal_chars.contains(&c)) {
-            errors.push(format!("Filename '{}' contains illegal characters", name));
-        }
-
-        // Check for duplicate names
-        let lower_name = name.to_lowercase();
-        if seen_names.contains(&lower_name) {
-            errors.push(format!("Duplicate filename: '{}'", name));
-        }
-        seen_names.insert(lower_name);
-    }
-
-    if errors.is_empty() {
-        Ok(Vec::new())
-    } else {
-        Ok(errors)
-    }
+    API.batch.validate_rename(&new_names)
+        .map_err(|e| e.to_string())
 }
 
 // ====== Vault Security Commands ======
@@ -825,8 +627,16 @@ pub fn vault_extract_from_container(
 pub fn vault_open_stego_container(
     container_path: String,
     password: String,
-) -> Result<(), String> {
+) -> Result<String, String> {
     API.vault.open_stego_container(container_path, password)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_save_stego_container(
+    session_id: String,
+) -> Result<(), String> {
+    API.vault.save_stego_container(session_id)
         .map_err(|e| e.to_string())
 }
 

@@ -124,9 +124,10 @@ export function useVault() {
     await vaultCreateStegoContainer(hostPath, outputPath, password)
   }
 
-  async function openStegoContainer(containerPath: string, password: string): Promise<void> {
-    await vaultOpenStegoContainer(containerPath, password)
-    await checkStatus()
+  async function openStegoContainer(containerPath: string, password: string): Promise<string> {
+    const sessionId = await vaultOpenStegoContainer(containerPath, password)
+    // await checkStatus() - removed, we don't want to swap current window's state
+    return sessionId
   }
 
   return {

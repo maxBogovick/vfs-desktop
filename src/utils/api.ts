@@ -52,3 +52,6 @@ export const vaultExtractFromContainer = (containerPath: string, outputPath: str
 
 export const vaultOpenStegoContainer = (containerPath: string, password: string) =>
   invoke('vault_open_stego_container', { containerPath, password })
+
+export const vaultSaveStegoContainer = (sessionId: string) =>
+  invoke('vault_save_stego_container', { sessionId })

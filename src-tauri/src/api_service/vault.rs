@@ -5,16 +5,40 @@
  */
 
 use super::{ApiResult, ApiError};
-use crate::api::virtual_fs::VirtualFileSystem;
+use crate::api::{virtual_fs::VirtualFileSystem, temporary_fs::TemporaryFileSystem};
 use crate::api::vault_error::{VaultError, VaultErrorResponse};
 use crate::api::recovery::{RecoveryManager, RecoverySession};
 use crate::api::notification_channels::ChannelConfig;
 use crate::config::FileSystemBackend;
 use crate::state::APP_CONFIG;
+use crate::api_service::files::TEMP_FS_SESSIONS;
 use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
 use once_cell::sync::Lazy;
 
-/// Global VirtualFileSystem instance
+use std::collections::HashMap;
+
+/// Metadata for an active steganography session
+struct StegoSession {
+    container_path: PathBuf,
+    password: String,
+    temp_dir: PathBuf,
+}
+
+/// Map of active stego sessions
+static STEGO_SESSIONS: Lazy<Arc<Mutex<HashMap<String, StegoSession>>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(HashMap::new()))
+});
+
+/// Map of window label to its specific VirtualFileSystem instance
+pub type WindowFsMap = Arc<Mutex<HashMap<String, VirtualFileSystem>>>;
+
+/// Global storage for all active VFS sessions
+pub static VAULT_FS_SESSIONS: Lazy<WindowFsMap> = Lazy::new(|| {
+    Arc::new(Mutex::new(HashMap::new()))
+});
+
+/// Legacy global instance (for main window or when label not provided)
 pub static VAULT_FS: Lazy<Arc<Mutex<Option<VirtualFileSystem>>>> = Lazy::new(|| {
     Arc::new(Mutex::new(None))
 });
@@ -267,20 +291,11 @@ impl VaultService {
         let output = Path::new(&output_path);
 
         // Basic validation
-        // Note: source path check might depend on whether it's real or virtual.
-        // For now, steganography works on real FS paths mostly because it uses std::fs.
-        // If source_path is virtual, we'd need to extract it first.
-        // Assuming Real FS or extracted Virtual FS content for now.
-        // If the user wants to hide a file FROM the virtual FS, the backend needs to handle reading from VFS.
-        // Since `embed_path` uses std::fs, it only supports Real FS paths.
-        // TODO: Support Virtual FS paths by streaming content from VFS.
-        
         if !host.exists() {
              return Err(ApiError::ValidationError { message: "Host file does not exist".to_string() });
         }
         
         if !source.exists() {
-             // Check if it's a VFS path... actually for now, let's enforce Real FS for source
              return Err(ApiError::ValidationError { message: "Source file does not exist (Real FS only for now)".to_string() });
         }
 
@@ -324,7 +339,7 @@ impl VaultService {
     }
 
     /// Open a vault hidden in a container file
-    pub fn open_stego_container(&self, container_path: String, password: String) -> ApiResult<()> {
+    pub fn open_stego_container(&self, container_path: String, password: String) -> ApiResult<String> {
         use crate::api::steganography;
         use std::path::Path;
         use uuid::Uuid;
@@ -347,36 +362,72 @@ impl VaultService {
                 _ => ApiError::Internal { message: e.to_string() },
             })?;
 
-        // Configure VaultPaths for this temp location
-        let vault_paths = crate::config::VaultPaths {
-            dir: temp_dir.clone(),
-            fs_json: temp_dir.join("fs.json"),
-            vault_meta: temp_dir.join("vault.meta"),
-            vault_bin: temp_dir.join("vault.bin"),
-        };
+        // Generate a unique session ID
+        let session_id = format!("stego_{}", Uuid::new_v4());
 
-        // Initialize VFS with these paths
-        let vfs = VirtualFileSystem::new_with_paths(vault_paths)
-            .map_err(|e| ApiError::Internal { message: e.to_string() })?;
-
-        // Unlock the inner vault using the same password
-        // Note: The inner vault might have a different password, but for better UX in steganography mode,
-        // we assume the user uses the same password or we prompt again if this fails.
-        // For now, we try to unlock.
-        if let Err(e) = vfs.unlock_vault(&password) {
-            tracing::warn!("Failed to auto-unlock inner vault: {}. User might need to enter password again.", e);
-            // We still proceed, but the vault will be in LOCKED state.
-            // The user will see the login screen.
+        // Store session metadata for saving later
+        {
+            let mut stego_sessions = STEGO_SESSIONS.lock().unwrap();
+            stego_sessions.insert(session_id.clone(), StegoSession {
+                container_path: container.to_path_buf(),
+                password: password.clone(),
+                temp_dir: temp_dir.clone(),
+            });
         }
 
-        // Replace global VFS
-        let mut vfs_guard = VAULT_FS.lock().unwrap();
-        *vfs_guard = Some(vfs);
+        // Check if extracted content is a vault (has fs.json or vault.bin)
+        let fs_json_path = temp_dir.join("fs.json");
+        let vault_bin_path = temp_dir.join("vault.bin");
 
-        // Update config to reflect we are in a "custom" mode (though not persisted to disk as the main config)
-        // Actually, we don't update APP_CONFIG because we don't want to persist this temp path.
-        // The VFS instance is swapped in memory, which is what matters for the current session.
-        
+        if fs_json_path.exists() || vault_bin_path.exists() {
+            // It's a vault -> Initialize VirtualFileSystem
+            let vault_paths = crate::config::VaultPaths {
+                dir: temp_dir.clone(),
+                fs_json: fs_json_path,
+                vault_meta: temp_dir.join("vault.meta"),
+                vault_bin: vault_bin_path,
+            };
+
+            let vfs = VirtualFileSystem::new_with_paths(vault_paths.clone())
+                .map_err(|e| ApiError::Internal { message: e.to_string() })?;
+
+            if let Err(e) = vfs.unlock_vault(&password) {
+                tracing::warn!("Failed to auto-unlock inner vault: {}. User might need to enter password again.", e);
+            }
+
+            let mut sessions_guard = VAULT_FS_SESSIONS.lock().unwrap();
+            sessions_guard.insert(session_id.clone(), vfs);
+        } else {
+            // It's raw files -> Initialize TemporaryFileSystem
+            tracing::info!("Initializing TemporaryFileSystem for raw stego content at {:?}", temp_dir);
+            let tfs = TemporaryFileSystem::new(temp_dir);
+            
+            let mut sessions_guard = TEMP_FS_SESSIONS.lock().unwrap();
+            sessions_guard.insert(session_id.clone(), tfs);
+        }
+
+        Ok(session_id)
+    }
+
+    /// Save the current steganography session back to the container file
+    pub fn save_stego_container(&self, session_id: String) -> ApiResult<()> {
+        use crate::api::steganography;
+
+        // Retrieve session metadata
+        let (container_path, password, temp_dir) = {
+            let sessions = STEGO_SESSIONS.lock().unwrap();
+            let session = sessions.get(&session_id)
+                .ok_or_else(|| ApiError::ValidationError { message: "Session not found".to_string() })?;
+            (session.container_path.clone(), session.password.clone(), session.temp_dir.clone())
+        };
+
+        // Update the container
+        // Note: this takes the current content of temp_dir (which backs both Virtual and Temporary FS)
+        // and re-encrypts/embeds it.
+        steganography::update_container(&container_path, &temp_dir, &password)
+            .map_err(|e| ApiError::Internal { message: format!("Failed to update container: {}", e) })?;
+
+        tracing::info!("Successfully saved stego session {} to {:?}", session_id, container_path);
         Ok(())
     }
 }

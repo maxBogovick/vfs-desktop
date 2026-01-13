@@ -2,31 +2,31 @@
  * File Operations Service
  *
  * Comprehensive file system operations with proper error handling.
- *
- * # Examples
- *
- * ```rust
- * use vfdir::api_service::FileService;
- *
- * let service = FileService::new();
- * let files = service.list_directory("/Users")?;
- * ```
  */
 
 use super::{ApiResult, ApiError};
 use super::models::FileSystemEntry;
-use crate::api::{RealFileSystem, virtual_fs::VirtualFileSystem};
+use crate::api::{RealFileSystem, virtual_fs::VirtualFileSystem, temporary_fs::TemporaryFileSystem};
 use crate::config::FileSystemBackend;
 use crate::core::FileSystem;
 use crate::state::APP_CONFIG;
 use crate::api_service::vault::VAULT_FS;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
+use once_cell::sync::Lazy;
+
+/// Global storage for active Temporary FS sessions
+pub static TEMP_FS_SESSIONS: Lazy<Arc<Mutex<HashMap<String, TemporaryFileSystem>>>> = Lazy::new(|| {
+    Arc::new(Mutex::new(HashMap::new()))
+});
 
 /// Enum для хранения разных типов файловых систем
 enum FileSystemInstance {
     Real(RealFileSystem),
     Virtual(VirtualFileSystem),
+    Temporary(TemporaryFileSystem),
 }
 
 impl FileSystemInstance {
@@ -34,6 +34,7 @@ impl FileSystemInstance {
         match self {
             FileSystemInstance::Real(fs) => fs,
             FileSystemInstance::Virtual(fs) => fs,
+            FileSystemInstance::Temporary(fs) => fs,
         }
     }
 }
@@ -66,16 +67,29 @@ impl FileService {
         Self
     }
 
-    /// Get filesystem instance based on configuration
-    fn get_filesystem(&self) -> FileSystemInstance {
-        self.get_filesystem_by_backend(None)
-    }
-
     /// Get filesystem instance based on optional backend parameter
     ///
     /// # Arguments
-    /// * `backend` - Optional backend type ("real" or "virtual"). If None, uses global config.
+    /// * `backend` - Optional backend type ("real" or "virtual" or a window label). If None, uses global config.
     fn get_filesystem_by_backend(&self, backend: Option<&str>) -> FileSystemInstance {
+        // Check if backend is a window label in VAULT_FS_SESSIONS
+        if let Some(label) = backend {
+            let sessions = crate::api_service::vault::VAULT_FS_SESSIONS.lock().unwrap();
+            if let Some(vfs) = sessions.get(label) {
+                tracing::debug!("Using window-specific VFS session for label: {}", label);
+                return FileSystemInstance::Virtual(vfs.clone());
+            }
+        }
+
+        // Check if backend is a temporary session
+        if let Some(label) = backend {
+            let sessions = TEMP_FS_SESSIONS.lock().unwrap();
+            if let Some(tfs) = sessions.get(label) {
+                tracing::debug!("Using temporary FS session for label: {}", label);
+                return FileSystemInstance::Temporary(tfs.clone());
+            }
+        }
+
         let backend_enum = match backend {
             Some("real") => FileSystemBackend::Real,
             Some("virtual") => FileSystemBackend::Virtual,
@@ -84,8 +98,9 @@ impl FileService {
                 let config = APP_CONFIG.read().unwrap();
                 config.filesystem_backend.clone()
             }
-            Some(other) => {
-                tracing::warn!("Invalid filesystem backend '{}', using global config", other);
+            Some(_other) => {
+                // Check if it was intended to be virtual but used a label not found yet
+                // Fallback to global virtual if configured
                 let config = APP_CONFIG.read().unwrap();
                 config.filesystem_backend.clone()
             }
@@ -542,11 +557,11 @@ impl FileService {
              
              self.write_file_bytes(&dest_path, &content, dest_fs)?;
              
-             return Ok(());
+             return Ok(())
         }
 
         // Same (Real) filesystem optimization
-        self.get_filesystem_by_backend(source_fs).as_trait()
+        self.get_filesystem_by_backend(source_fs).as_trait() 
             .copy_with_custom_name(source_path, destination_dir, new_name)
             .map_err(|err| {
                 tracing::error!("Failed to copy with custom name: {}", err.message);

@@ -153,6 +153,25 @@ pub fn extract_vault(
     Ok(())
 }
 
+/// Updates an existing steganography container with new content from source_path.
+/// Safely handles the case where we want to overwrite the container.
+pub fn update_container(
+    container_path: &Path,
+    source_path: &Path,
+    password: &str,
+) -> VaultResult<()> {
+    // 1. Create a temporary file for the new container
+    let temp_output = container_path.with_extension("tmp");
+    
+    // 2. Embed content into the temp file using the original container as host
+    embed_path(container_path, source_path, &temp_output, password)?;
+    
+    // 3. Replace original container with temp file atomically-ish
+    std::fs::rename(&temp_output, container_path).map_err(|e| VaultError::Io(e))?;
+    
+    Ok(())
+}
+
 fn create_tarball_vault(root_path: &Path) -> VaultResult<Vec<u8>> {
     let enc = GzEncoder::new(Vec::new(), Compression::default());
     let mut tar = tar::Builder::new(enc);
