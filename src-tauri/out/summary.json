@@ -1,0 +1,17 @@
+{
+  "total_chunks": 1,
+  "total_files": 35,
+  "total_tokens": 13556,
+  "duration_secs": 0.062160833,
+  "output_directory": "./out",
+  "format": "Markdown",
+  "chunks": [
+    {
+      "index": 1,
+      "files": 35,
+      "tokens": 13556,
+      "filename": "prompt_001.md"
+    }
+  ],
+  "generated_at": "2026-01-11 20:36:35"
+}
