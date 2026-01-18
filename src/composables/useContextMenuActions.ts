@@ -500,6 +500,93 @@ export function useContextMenuActions(params: ContextMenuActionsParams) {
         'password'
       );
     },
+
+    createSecureFolder: () => {
+      showInput(
+        'New Secure Folder',
+        'Enter name for the secure folder:',
+        (name) => {
+          if (!name) return;
+          // Defer the password dialog to ensure the first dialog closes completely
+          setTimeout(() => {
+            showInput(
+                'Set Password',
+                'Enter password for the secure folder:',
+                async (password) => {
+                if (!password) return;
+                try {
+                    const currentDir = getCurrentDirPath();
+                    await invoke('vault_create_new_secure_folder', {
+                        name,
+                        parentPath: currentDir,
+                        password
+                    });
+                    success('Success', `Created secure folder: ${name}.safe`);
+                    // Refresh
+                    if (params.isDualMode()) {
+                        params.getActivePanelMethods()?.handleRefresh();
+                    } else {
+                        await params.refreshCurrentDirectory();
+                    }
+                } catch (err) {
+                    error('Failed to create secure folder', err instanceof Error ? err.message : String(err));
+                }
+                },
+                '',
+                'Password',
+                'password'
+            );
+          }, 200);
+        },
+        'New Secure Folder',
+        'Folder Name'
+      );
+    },
+
+    protectSelection: () => {
+      const selected = params.getSelectedItems();
+      if (selected.length === 0) return;
+
+      if (selected.length > 1) {
+          error('Operation Limit', 'Please select a single file or folder to protect.');
+          return;
+      }
+
+      const item = selected[0];
+      showInput(
+        'Protect with Password',
+        `Set password for '${item.name}':`,
+        async (password) => {
+          if (!password) return;
+          try {
+             // Determine output path. default to item.path + .safe
+             // But if item is folder /a/b, output is /a/b.safe.
+             // If item is file /a/b.txt, output is /a/b.txt.safe? Or /a/b.safe?
+             // create_container handles source path.
+             const outputPath = item.path + '.safe';
+             
+             await invoke('vault_create_container', {
+                sourcePath: item.path,
+                outputPath: outputPath,
+                password
+             });
+             success('Success', `Protected '${item.name}' as '${item.name}.safe'`);
+             
+             // Refresh
+             if (params.isDualMode()) {
+                params.getActivePanelMethods()?.handleRefresh();
+             } else {
+                await params.refreshCurrentDirectory();
+             }
+          } catch (err) {
+             error('Failed to protect item', err instanceof Error ? err.message : String(err));
+          }
+        },
+        '',
+        'Password',
+        'password'
+      );
+    },
   };
 
   return handlers;

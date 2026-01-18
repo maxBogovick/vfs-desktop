@@ -32,6 +32,7 @@ import WidgetLayer from './components/WidgetLayer.vue';
 import WidgetSelector from './components/WidgetSelector.vue';
 import ShareDialog from './components/ShareDialog.vue';
 import StegoVaultModal from './components/StegoVaultModal.vue';
+import TorrentManager from './components/TorrentManager.vue';
 
 // Composables - Core
 import { useFileSystem } from './composables/useFileSystem';
@@ -515,6 +516,11 @@ const handleNavigateToPath = async (path: string) => {
 
 // Item Handlers
 const handleItemDoubleClick = (item: FileItem) => {
+  if (item.name.endsWith('.safe')) {
+    handleOpenStegoFile(item.path);
+    return;
+  }
+  
   if (item.type === 'folder' || item.type === 'drive' || item.type === 'system' || item.type === 'archive') {
     const pathParts = item.path.split('/').filter(p => p);
     navigateTo(pathParts);
@@ -633,35 +639,39 @@ const handleToggleEditMode = () => {
 };
 
 // Steganography Handler
+const handleOpenStegoFile = async (path: string) => {
+  showInput(
+    'Open Secure Folder',
+    `Enter password for '${path.split('/').pop()}':`,
+    async (password) => {
+      if (password) {
+        try {
+          const sessionId = await vault.openStegoContainer(path, password);
+
+          // Open modal with session ID
+          stegoModal.value = {
+            isOpen: true,
+            sessionId: sessionId,
+            title: `Secure Folder: ${path.split('/').pop()}`,
+          };
+          
+          success('Unlocked', `Opened secure folder`);
+        } catch (err) {
+          error('Failed to open', err instanceof Error ? err.message : String(err));
+        }
+      }
+    },
+    '',
+    'Password',
+    'password'
+  );
+};
+
 const handleOpenStego = async () => {
   try {
     const path = await invoke<string | null>('vault_select_file');
     if (path) {
-      showInput(
-        'Open Hidden Vault',
-        'Enter password to unlock hidden vault:',
-        async (password) => {
-          if (password) {
-            try {
-              const sessionId = await vault.openStegoContainer(path, password);
-
-              // Open modal with session ID
-              stegoModal.value = {
-                isOpen: true,
-                sessionId: sessionId,
-                title: `Hidden Vault: ${path.split('/').pop()}`,
-              };
-              
-              success('Vault Opened', `Mounted hidden vault`);
-            } catch (err) {
-              error('Failed to open vault', err instanceof Error ? err.message : String(err));
-            }
-          }
-        },
-        '',
-        'Password',
-        'password'
-      );
+      await handleOpenStegoFile(path);
     }
   } catch (err) {
     console.error('Failed to select file:', err);
@@ -1486,6 +1496,8 @@ onMounted(async () => {
       @share="contextMenuHandlers.share"
       @hide-to="contextMenuHandlers.hideTo"
       @extract-hidden="contextMenuHandlers.extractHidden"
+      @create-secure-folder="contextMenuHandlers.createSecureFolder"
+      @protect-selection="contextMenuHandlers.protectSelection"
       @close="closeContextMenu"
     />
 
@@ -1629,6 +1641,7 @@ onMounted(async () => {
       :title="stegoModal.title"
       @close="stegoModal.isOpen = false"
     />
+    <TorrentManager />
   </div>
 </template>
 

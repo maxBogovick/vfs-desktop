@@ -2,9 +2,8 @@
 import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
 import { useVault } from '../composables/useVault';
+import { useTorrent } from '../composables/useTorrent';
 import GroupByDropdown from './GroupByDropdown.vue';
-import type { Tab, ViewMode, PanelMode } from '../types';
-import type { GroupBy } from '../composables/useGrouping';
 
 interface Props {
   tabs: Tab[];
@@ -58,6 +57,7 @@ const fsType = ref<'real' | 'virtual'>('real');
 const vaultStatus = ref<'UNLOCKED' | 'LOCKED' | 'UNINITIALIZED' | 'DISABLED'>('DISABLED');
 const vaultActionInProgress = ref(false);
 const vault = useVault();
+const { toggleManager: toggleTorrentManager } = useTorrent();
 
 const fullPath = computed(() => {
   const path = props.currentPath.join('/');
@@ -312,6 +312,15 @@ onUnmounted(() => {
         >
           {{ queueActiveCount > 99 ? '99+' : queueActiveCount }}
         </span>
+      </button>
+
+      <!-- Torrent Button -->
+      <button
+        @click="toggleTorrentManager"
+        class="w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] flex items-center justify-center transition-all"
+        title="Torrent Manager"
+      >
+        📥
       </button>
 
       <!-- Programmer Mode Button -->

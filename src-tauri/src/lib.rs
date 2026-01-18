@@ -43,12 +43,22 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_tracing();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let state = api::torrent::init_torrent_state().await;
+                handle.manage(state);
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             greet,
             // Filesystem commands
@@ -123,6 +133,8 @@ pub fn run() {
             vault_reset,
             // Steganography commands
             vault_create_stego_container,
+            vault_create_container,
+            vault_create_new_secure_folder,
             vault_hide_path_in_container,
             vault_extract_from_container,
             vault_open_stego_container,
@@ -150,6 +162,9 @@ pub fn run() {
             // Share commands
             api::share::share_file,
             api::share::stop_share,
+            // Torrent commands
+            api::torrent::add_torrent_file,
+            api::torrent::get_torrents,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -305,6 +305,64 @@ impl VaultService {
         Ok(())
     }
 
+    /// Create a standalone encrypted container from a source path (file or directory).
+    /// This is similar to embedding, but without a host file.
+    pub fn create_container(
+        &self,
+        source_path: String,
+        output_path: String,
+        password: String,
+    ) -> ApiResult<()> {
+        use crate::api::steganography;
+        use std::path::Path;
+
+        let source = Path::new(&source_path);
+        let output = Path::new(&output_path);
+
+        if !source.exists() {
+             return Err(ApiError::ValidationError { message: "Source path does not exist".to_string() });
+        }
+
+        steganography::create_container(source, output, &password)
+             .map_err(|e| ApiError::Internal { message: e.to_string() })?;
+
+        Ok(())
+    }
+
+    /// Create a new empty secure folder (standalone container)
+    pub fn create_new_secure_folder(
+        &self,
+        name: String,
+        parent_path: String,
+        password: String,
+    ) -> ApiResult<()> {
+        use std::path::Path;
+        use tempfile::tempdir;
+
+        let parent = Path::new(&parent_path);
+        let mut filename = name.clone();
+        if !filename.ends_with(".safe") {
+            filename.push_str(".safe");
+        }
+        let output_path = parent.join(&filename);
+
+        if output_path.exists() {
+            return Err(ApiError::ValidationError { message: format!("File already exists: {}", output_path.display()) });
+        }
+
+        // Create temp dir
+        let temp_dir = tempdir().map_err(|e| ApiError::Internal { message: e.to_string() })?;
+        
+        // Create container from empty temp dir
+        self.create_container(
+            temp_dir.path().to_string_lossy().to_string(),
+            output_path.to_string_lossy().to_string(),
+            password
+        )?;
+
+        Ok(())
+    }
+
     /// Extract hidden content from a container file to a specific directory
     pub fn extract_from_container(
         &self,

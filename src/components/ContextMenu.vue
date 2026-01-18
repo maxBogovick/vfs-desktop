@@ -40,6 +40,8 @@ interface Emits {
   (e: 'share'): void;
   (e: 'hideTo'): void;
   (e: 'extractHidden'): void;
+  (e: 'createSecureFolder'): void;
+  (e: 'protectSelection'): void;
   (e: 'close'): void;
 }
 
@@ -254,6 +256,16 @@ const handleAction = (action: keyof Emits) => {
         </div>
       </div>
 
+      <!-- Protect with Password -->
+      <div
+        v-if="selectedCount > 0"
+        @click="handleAction('protectSelection')"
+        class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2 text-blue-700 font-medium"
+      >
+        <span class="w-4">🛡️</span>
+        <span class="flex-1">Protect with Password</span>
+      </div>
+
       <div
         v-if="selectedCount > 1"
         @click="handleAction('batchRename')"
@@ -384,6 +396,15 @@ const handleAction = (action: keyof Emits) => {
         <span class="w-4">📁</span>
         <span class="flex-1">New Folder</span>
         <span class="text-[9px] text-gray-400">F7</span>
+      </div>
+
+      <!-- New Secure Folder -->
+      <div
+        @click="handleAction('createSecureFolder')"
+        class="px-3 py-1.5 hover:bg-[#C1D2EE] cursor-pointer flex items-center gap-2 text-blue-700 font-medium"
+      >
+        <span class="w-4">🔒</span>
+        <span class="flex-1">New Secure Folder</span>
       </div>
 
        <!-- New File -->

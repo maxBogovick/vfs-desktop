@@ -395,7 +395,7 @@ export function useFileOperations(refreshCallback?: () => Promise<void>) {
       success('File created', `Created ${name}`);
     } catch (err) {
       showError('Create file failed', err instanceof Error ? err.message : 'Unknown error');
-      throw err;
+      // Do not re-throw, error is handled
     }
   };
 

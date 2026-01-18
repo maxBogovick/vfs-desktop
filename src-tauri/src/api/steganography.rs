@@ -58,6 +58,40 @@ pub fn embed_path(
     Ok(())
 }
 
+/// Creates a standalone encrypted container from a source path (file or directory).
+/// This is similar to embedding, but without a host file.
+pub fn create_container(
+    source_path: &Path,
+    output_path: &Path,
+    password: &str,
+) -> VaultResult<()> {
+    // 1. Prepare the payload (Tar + Gzip + Encrypt)
+    let salt = generate_salt();
+    let session = derive_master_key(password, &salt)?;
+    
+    // Create archive of the source path
+    let tar_gz = create_tarball_generic(source_path)?;
+    
+    // Encrypt
+    let encrypted_payload = encrypt_blob(&tar_gz, &session)?;
+    let final_payload_size = encrypted_payload.len() as u64;
+
+    // 2. Create output file
+    let mut output = File::create(output_path).map_err(|e| VaultError::Io(e))?;
+
+    // 3. Write payload directly (no host content)
+    output.write_all(&encrypted_payload).map_err(|e| VaultError::Io(e))?;
+
+    // 4. Append Footer
+    // Structure: [Magic 11] [Version 1] [Salt 16] [PayloadSize 8]
+    output.write_all(STEGO_MAGIC).map_err(|e| VaultError::Io(e))?;
+    output.write_u8(STEGO_VERSION).map_err(|e| VaultError::Io(e))?;
+    output.write_all(&salt).map_err(|e| VaultError::Io(e))?;
+    output.write_u64::<LittleEndian>(final_payload_size).map_err(|e| VaultError::Io(e))?;
+
+    Ok(())
+}
+
 /// Embeds the vault into a host file (specialized wrapper for embed_path)
 pub fn embed_vault(
     host_path: &Path,

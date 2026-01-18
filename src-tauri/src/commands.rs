@@ -603,6 +603,26 @@ pub fn vault_create_stego_container(
 }
 
 #[tauri::command]
+pub fn vault_create_container(
+    source_path: String,
+    output_path: String,
+    password: String,
+) -> Result<(), String> {
+    API.vault.create_container(source_path, output_path, password)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn vault_create_new_secure_folder(
+    name: String,
+    parent_path: String,
+    password: String,
+) -> Result<(), String> {
+    API.vault.create_new_secure_folder(name, parent_path, password)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn vault_hide_path_in_container(
     source_path: String,
     host_path: String,
