@@ -53,6 +53,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             let handle = app.handle().clone();
+            app.manage(api::monitor::MonitorState::new());
             tauri::async_runtime::spawn(async move {
                 let state = api::torrent::init_torrent_state().await;
                 handle.manage(state);
@@ -104,6 +105,9 @@ pub fn run() {
             calculate_directory_size,
             // System monitoring commands
             get_system_stats,
+            api::monitor::start_monitoring,
+            api::monitor::stop_monitoring,
+            api::monitor::kill_process,
             // Conflict resolution commands
             check_file_conflict,
             copy_file_with_custom_name,

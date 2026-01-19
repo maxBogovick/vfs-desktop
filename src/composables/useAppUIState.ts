@@ -32,6 +32,7 @@ export function useAppUIState() {
   const previewFile = ref<FileItem | null>(null);
   const showDashboard = ref(false);
   const dashboardWidth = ref(400);
+  const showSystemMonitor = ref(false);
 
   // Share
   const showShareDialog = ref(false);
@@ -112,6 +113,10 @@ export function useAppUIState() {
     showOperationsQueue.value = !showOperationsQueue.value;
   };
 
+  const toggleSystemMonitor = () => {
+    showSystemMonitor.value = !showSystemMonitor.value;
+  };
+
   const updateSystemStats = (stats: { memory_mb: number; cpu_percent: number }) => {
     systemStats.value = stats;
   };
@@ -166,6 +171,7 @@ export function useAppUIState() {
     previewFile,
     showDashboard,
     dashboardWidth,
+    showSystemMonitor,
 
     // Share
     showShareDialog,
@@ -195,6 +201,7 @@ export function useAppUIState() {
     openInlineCreator,
     closeInlineCreator,
     toggleOperationsQueue,
+    toggleSystemMonitor,
     updateSystemStats,
     loadFilesystemBackend,
   };

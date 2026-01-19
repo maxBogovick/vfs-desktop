@@ -37,6 +37,7 @@ interface Emits {
   (e: 'toggleProgrammerMode'): void;
   (e: 'togglePanelMode'): void;
   (e: 'toggleDashboard'): void;
+  (e: 'toggleSystemMonitor'): void;
   (e: 'toggleOperationsQueue'): void;
   (e: 'update:groupBy', value: GroupBy): void;
 }
@@ -296,6 +297,15 @@ onUnmounted(() => {
         title="Folder Statistics Dashboard"
       >
         📊
+      </button>
+
+      <!-- System Monitor Button -->
+      <button
+        @click="emit('toggleSystemMonitor')"
+        class="w-[30px] h-[28px] bg-gradient-to-b from-[var(--vf-surface-default)] to-[var(--vf-bg-tertiary)] border border-[var(--vf-border-default)] hover:border-[var(--vf-accent-primary)] active:bg-[var(--vf-surface-hover)] flex items-center justify-center transition-all"
+        title="System Monitor Pro"
+      >
+        📈
       </button>
 
       <!-- Operations Queue Button -->

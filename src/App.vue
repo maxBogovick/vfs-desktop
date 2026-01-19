@@ -33,6 +33,7 @@ import WidgetSelector from './components/WidgetSelector.vue';
 import ShareDialog from './components/ShareDialog.vue';
 import StegoVaultModal from './components/StegoVaultModal.vue';
 import TorrentManager from './components/TorrentManager.vue';
+import SystemMonitorDashboard from './components/monitor/SystemMonitorDashboard.vue';
 
 // Composables - Core
 import { useFileSystem } from './composables/useFileSystem';
@@ -1328,6 +1329,7 @@ onMounted(async () => {
       @toggle-programmer-mode="toggleProgrammerMode"
       @toggle-panel-mode="togglePanelMode"
       @toggle-dashboard="appUI.toggleDashboard"
+      @toggle-system-monitor="appUI.toggleSystemMonitor"
       @toggle-operations-queue="appUI.toggleOperationsQueue"
       @update:group-by="(value) => groupBy = value"
     />
@@ -1640,6 +1642,10 @@ onMounted(async () => {
       :session-id="stegoModal.sessionId"
       :title="stegoModal.title"
       @close="stegoModal.isOpen = false"
+    />
+    <SystemMonitorDashboard 
+      :is-open="appUI.showSystemMonitor.value" 
+      @close="appUI.showSystemMonitor.value = false"
     />
     <TorrentManager />
   </div>
