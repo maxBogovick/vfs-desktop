@@ -108,6 +108,8 @@ pub fn run() {
             api::monitor::start_monitoring,
             api::monitor::stop_monitoring,
             api::monitor::kill_process,
+            api::monitor::suspend_process,
+            api::monitor::resume_process,
             // Conflict resolution commands
             check_file_conflict,
             copy_file_with_custom_name,

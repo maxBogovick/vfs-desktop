@@ -5,6 +5,7 @@ export interface ProcessInfo {
   memory: number;
   user: string | null;
   status: string;
+  exe_path: string | null;
 }
 
 export interface SystemSnapshot {
@@ -50,6 +51,11 @@ export function useSystemMetrics() {
 
     unlistenUpdate = await listen<SystemSnapshot>('sys_mon_update', (event) => {
       const snap = event.payload;
+      // Debug log to verify data flow
+      if (history.value.length % 10 === 0) {
+          console.log('System Monitor Update:', snap.cpu_global_usage, 'History size:', history.value.length);
+      }
+      
       const newHistory = [...history.value, snap];
       if (newHistory.length > HISTORY_SIZE) {
         newHistory.shift();
@@ -85,27 +91,44 @@ export function useSystemMetrics() {
   });
 
   const generatePath = (
-    dataExtractor: (snap: SystemSnapshot) => number, 
-    width: number, 
-    height: number, 
-    maxVal: number
+      dataExtractor: (snap: SystemSnapshot) => number,
+      width: number,
+      height: number,
+      maxVal: number
   ) => {
-    if (history.value.length < 2) return '';
+    if (history.value.length < 1) return '';
 
     const stepX = width / (HISTORY_SIZE - 1);
     const startIndex = HISTORY_SIZE - history.value.length;
-    
-    let path = `M 0 ${height} `;
-    
+
+    const effectiveHeight = height - 4; // Buffer for stroke width
+    const offsetY = 2;
+
+    // Start from the first data point, not from 0,height
+    const firstSnap = history.value[0];
+    const firstX = startIndex * stepX;
+    const firstVal = dataExtractor(firstSnap);
+    const firstNormalized = Math.min(Math.max(firstVal / maxVal, 0), 1);
+    const firstY = (height - offsetY) - (firstNormalized * effectiveHeight);
+
+    let path = `M ${firstX} ${height} `; // Start at bottom of first point
+    path += `L ${firstX} ${firstY} `; // Go up to first data point
+
+    // Draw the rest of the line
     history.value.forEach((snap, i) => {
+      if (i === 0) return; // Skip first point as we already handled it
+
       const x = (startIndex + i) * stepX;
       const val = dataExtractor(snap);
       const normalized = Math.min(Math.max(val / maxVal, 0), 1);
-      const y = height - (normalized * height);
+      const y = (height - offsetY) - (normalized * effectiveHeight);
       path += `L ${x} ${y} `;
     });
 
-    path += `L ${width} ${height} Z`;
+    // Close the path to create filled area
+    const lastX = (startIndex + history.value.length - 1) * stepX;
+    path += `L ${lastX} ${height} Z`;
+
     return path;
   };
 
@@ -132,7 +155,25 @@ export function useSystemMetrics() {
       try {
           await invoke('kill_process', { pid });
       } catch (e) {
-          console.error(e);
+          console.error("Error killing process:", e);
+          throw e;
+      }
+  };
+
+  const suspendProcess = async (pid: number) => {
+      try {
+          await invoke('suspend_process', { pid });
+      } catch (e) {
+          console.error("Error suspending process:", e);
+          throw e;
+      }
+  };
+
+  const resumeProcess = async (pid: number) => {
+      try {
+          await invoke('resume_process', { pid });
+      } catch (e) {
+          console.error("Error resuming process:", e);
           throw e;
       }
   };
@@ -146,6 +187,8 @@ export function useSystemMetrics() {
     currentSnapshot,
     generatePath,
     generateNetworkPath,
-    killProcess
+    killProcess,
+    suspendProcess,
+    resumeProcess
   };
 }
